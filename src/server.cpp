@@ -3,6 +3,7 @@
 #include <modbus.h>
 #include <iostream>
 #include <unistd.h>
+#include "plc_logic.h"
 
 int ModbusServer::run() {
     modbus_t* ctx = modbus_new_tcp("0.0.0.0", 502);
@@ -12,8 +13,16 @@ int ModbusServer::run() {
     }
 
     modbus_set_slave(ctx, 1);
-    modbus_mapping_t* mb_mapping = modbus_mapping_new(10, 10, 10, 10);
+    mapping_ = modbus_mapping_new(10, 10, 10, 10);
+    
+    if (!mapping_) {
+        std::cerr << "Failed to allocate Modbus mapping\n";
+        modbus_free(ctx);
+        return 1;
+    }
+    
     int listen_socket = modbus_tcp_listen(ctx, 1);
+    PlcLogic::start(mapping_);
 
     while (true) {
         int client_socket = modbus_tcp_accept(ctx, &listen_socket);
@@ -36,7 +45,7 @@ int ModbusServer::run() {
                     std::cout << "[DEBUG] Received Read Device ID command" << std::endl;
                 }
                 else
-                    ModbusHandler::handle_standard_function(ctx, query, rc, mb_mapping);
+                    ModbusHandler::handle_standard_function(ctx, query, rc, mapping_);
             } else {
                 break;
             }
@@ -46,7 +55,13 @@ int ModbusServer::run() {
     }
 
     close(listen_socket);
-    modbus_mapping_free(mb_mapping);
+    modbus_mapping_free(mapping_);
     modbus_free(ctx);
+    PlcLogic::stop();
+    std::cout << "[Info] Modbus server stopped\n";
     return 0;
+}
+
+modbus_mapping_t* ModbusServer::get_mapping() {
+    return mapping_;
 }
