@@ -18,6 +18,7 @@ add_executable(modbus_server
     src/server.cpp
     src/modbus_handler.cpp
     src/lua_hooks.cpp
+    src/device_config.cpp
 )
 target_link_libraries(modbus_server ${LIBMODBUS_LIBRARIES})
 target_link_libraries(modbus_server ${LUA_LIBRARIES})

@@ -5,14 +5,20 @@
 #include <sys/socket.h>
 #include <random>
 #include "lua_hooks.h"
+#include "device_config.h"
 
 static LuaHooks hooks("script.lua"); 
 
 void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* req, int) {
-    uint8_t response[256];
-    const char* device_name = "PM710PowerMeter";
-    uint8_t slave_id = 0xFA, run_indicator = 0xFF;
+    
+    // Get the device configuration
+    const auto& config = DeviceConfig::get();
+    const char* device_name = config.slave_name.c_str();
+    uint8_t slave_id = config.slave_id;
+    uint8_t run_indicator = config.run_indicator;
     size_t name_len = std::strlen(device_name);
+    
+    uint8_t response[256];    
 
     std::memcpy(response, req, 6); // TID, PID
     response[6] = req[6]; // Unit ID
@@ -43,11 +49,13 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
     response[12] = 0x00;
     response[13] = 0x01;
 
-    const char* info = "Schneider Electric PM710 v03.110";
-    uint8_t len = std::strlen(info);
+    const auto& config = DeviceConfig::get();
+    const char* device_info = config.device_id_string.c_str();
+    uint8_t len = std::strlen(device_info);
+
     response[14] = 0x00;
     response[15] = len;
-    std::memcpy(&response[16], info, len);
+    std::memcpy(&response[16], device_info, len);
 
     uint16_t data_len = (16 + len) - 6;
     response[4] = (data_len >> 8) & 0xFF;

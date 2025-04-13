@@ -26,9 +26,15 @@ int ModbusServer::run() {
             if (rc > 0) {
                 uint8_t func = query[7];
                 if (func == 0x11)
+                {
                     ModbusHandler::send_report_slave_id(client_socket, ctx, query, rc);
+                    std::cout << "[DEBUG] Received Report Slave ID command" << std::endl;
+                }
                 else if (func == 0x2B)
+                {                    
                     ModbusHandler::send_read_device_id(client_socket, ctx, query, rc);
+                    std::cout << "[DEBUG] Received Read Device ID command" << std::endl;
+                }
                 else
                     ModbusHandler::handle_standard_function(ctx, query, rc, mb_mapping);
             } else {

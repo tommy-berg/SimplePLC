@@ -1,8 +1,10 @@
 #include "server.h"
 #include <iostream>
+#include "device_config.h"
 
 int main() {
-    std::cout << "Starting Modbus server...\n";
+    DeviceConfig::load("settings.ini");
+    std::cout << "[Info] Starting Modbus server...\n";
     ModbusServer server;
     return server.run();
 }
