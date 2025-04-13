@@ -1,0 +1,46 @@
+#include "server.h"
+#include "modbus_handler.h"
+#include <modbus.h>
+#include <iostream>
+#include <unistd.h>
+
+int ModbusServer::run() {
+    modbus_t* ctx = modbus_new_tcp("0.0.0.0", 502);
+    if (!ctx) {
+        std::cerr << "Failed to listen on 0.0.0.0 port 502\n";
+        return 1;
+    }
+
+    modbus_set_slave(ctx, 1);
+    modbus_mapping_t* mb_mapping = modbus_mapping_new(10, 10, 10, 10);
+    int listen_socket = modbus_tcp_listen(ctx, 1);
+
+    while (true) {
+        int client_socket = modbus_tcp_accept(ctx, &listen_socket);
+        if (client_socket == -1) continue;
+
+        while (true) {
+            uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
+            int rc = modbus_receive(ctx, query);
+
+            if (rc > 0) {
+                uint8_t func = query[7];
+                if (func == 0x11)
+                    ModbusHandler::send_report_slave_id(client_socket, ctx, query, rc);
+                else if (func == 0x2B)
+                    ModbusHandler::send_read_device_id(client_socket, ctx, query, rc);
+                else
+                    ModbusHandler::handle_standard_function(ctx, query, rc, mb_mapping);
+            } else {
+                break;
+            }
+        }
+
+        close(client_socket);
+    }
+
+    close(listen_socket);
+    modbus_mapping_free(mb_mapping);
+    modbus_free(ctx);
+    return 0;
+}
