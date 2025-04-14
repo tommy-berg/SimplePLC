@@ -7,7 +7,7 @@
 #include "lua_hooks.h"
 #include "device_config.h"
 
-static LuaHooks hooks("script.lua"); 
+static LuaHooks hooks("world.lua"); 
 
 void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* req, int) {
     

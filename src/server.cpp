@@ -8,22 +8,22 @@
 int ModbusServer::run() {
     modbus_t* ctx = modbus_new_tcp("0.0.0.0", 502);
     if (!ctx) {
-        std::cerr << "Failed to listen on 0.0.0.0 port 502\n";
+        std::cerr << "Failed to listen on 0.0.0.0 port 502" << std::endl;
         return 1;
     }
 
     modbus_set_slave(ctx, 1);
-    mapping_ = modbus_mapping_new(10, 10, 10, 10);
-    
+    mapping_ = modbus_mapping_new(255, 255, 255, 255); 
     if (!mapping_) {
-        std::cerr << "Failed to allocate Modbus mapping\n";
+        std::cerr << "Failed to allocate Modbus mapping: " << modbus_strerror(errno) << std::endl;
         modbus_free(ctx);
         return 1;
     }
     
+    
     int listen_socket = modbus_tcp_listen(ctx, 1);
     PlcLogic::start(mapping_);
-
+    PlcLogic::loadScript("plc_logic.lua");
     while (true) {
         int client_socket = modbus_tcp_accept(ctx, &listen_socket);
         if (client_socket == -1) continue;
@@ -46,6 +46,8 @@ int ModbusServer::run() {
                 }
                 else
                     ModbusHandler::handle_standard_function(ctx, query, rc, mapping_);
+                    std::cout << "[DEBUG] Standard function requested" << std::endl;
+
             } else {
                 break;
             }

@@ -13,6 +13,9 @@ include_directories(${LUA_INCLUDE_DIR})
 include_directories(${LIBMODBUS_INCLUDE_DIRS})
 link_directories(${LIBMODBUS_LIBRARY_DIRS})
 
+find_package(Curses REQUIRED)
+include_directories(${CURSES_INCLUDE_DIR})
+
 add_executable(modbus_server
     src/main.cpp
     src/server.cpp
@@ -20,7 +23,6 @@ add_executable(modbus_server
     src/lua_hooks.cpp
     src/device_config.cpp
     src/plc_logic.cpp
-    src/plc_timer.cpp
 )
-target_link_libraries(modbus_server ${LIBMODBUS_LIBRARIES})
-target_link_libraries(modbus_server ${LUA_LIBRARIES})
+
+target_link_libraries(modbus_server ${LIBMODBUS_LIBRARIES} ${LUA_LIBRARIES} ${CURSES_LIBRARIES})
