@@ -22,21 +22,6 @@ static uint64_t now_ms() {
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-static void enableRawMode() {
-    struct termios raw;
-    tcgetattr(STDIN_FILENO, &raw);
-    raw.c_lflag &= ~(ICANON | ECHO);
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
-}
-
-static int kbhit() {
-    struct timeval tv = {0L, 0L};
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-    return select(1, &fds, NULL, NULL, &tv);
-}
-
 void PlcLogic::start(modbus_mapping_t* mapping) {
     if (!mapping) {
         throw std::runtime_error("Invalid Modbus mapping");
@@ -90,6 +75,8 @@ void PlcLogic::stop() {
         lua_close(lua_state);
         lua_state = nullptr;
     }
+    
+    platform::disableRawMode();
 }
 
 void PlcLogic::loadScript(const std::string& scriptPath) {
@@ -362,13 +349,9 @@ void PlcLogic::loop() {
             }
         }
         
-        // without mutex
-        //std::cout << "[PLC] Executing cycle " << cycle_count << "..." << std::endl;
-        
         if (lua_pcall(current_state, 0, 0, 0) != 0) {
             std::cerr << "[PLC] Lua error in cycle " << cycle_count << ": " 
                       << lua_tostring(current_state, -1) << std::endl;
-            
             
             lua_getglobal(current_state, "debug");
             if (!lua_isnil(current_state, -1)) {
@@ -382,8 +365,6 @@ void PlcLogic::loop() {
                 lua_pop(current_state, 1);
             }
             lua_pop(current_state, 1);
-        } else {
-            // std::cout << "[PLC] Cycle " << cycle_count << " completed successfully" << std::endl;
         }
         
         cycle_count++;
