@@ -51,7 +51,7 @@ jobs:
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
       run: |
-        .\vcpkg\vcpkg install libmodbus unofficial-lua pkgconf --triplet x64-windows-static
+        .\vcpkg\vcpkg install libmodbus lua pkgconf --triplet x64-windows-static
 
     # ---------- Configure ----------
     - name: Configure (Linux)
