@@ -1,13 +1,19 @@
 #pragma once
+#include <string>
 
 #ifdef _WIN32
     #include <windows.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
     #include <conio.h>
+    #pragma comment(lib, "ws2_32.lib")
     #define STDIN_FILENO 0
+    #define close closesocket
 #else
     #include <unistd.h>
     #include <termios.h>
     #include <sys/select.h>
+    #include <sys/socket.h>
 #endif
 
 // Platform-independent terminal functions
@@ -50,4 +56,19 @@ namespace platform {
         usleep(milliseconds * 1000);
 #endif
     }
+
+#ifdef _WIN32
+    // Windows-specific socket initialization
+    class WinSockInit {
+    public:
+        WinSockInit() {
+            WSADATA wsaData;
+            WSAStartup(MAKEWORD(2, 2), &wsaData);
+        }
+        ~WinSockInit() {
+            WSACleanup();
+        }
+    };
+    static WinSockInit winsock_init;
+#endif
 } 

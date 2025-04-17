@@ -4,7 +4,6 @@
 #include "platform.h"
 #include "modbus_handler.h"
 #include <modbus.h>
-#include <unistd.h>
 #include "plc_logic.h"
 
 int ModbusServer::run() {

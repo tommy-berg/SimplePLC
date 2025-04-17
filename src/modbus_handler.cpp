@@ -2,7 +2,6 @@
 #include <cstring>
 #include <iostream>
 #include "platform.h"
-#include <sys/socket.h>
 #include <random>
 #include "lua_hooks.h"
 #include "device_config.h"
