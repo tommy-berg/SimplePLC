@@ -1,5 +1,6 @@
 
 # [Work in Progress] SimplePLC
+[![CMake on multiple platforms](https://github.com/tommy-berg/SimplePLC/actions/workflows/cmake-multi-platform.yml/badge.svg?branch=main)](https://github.com/tommy-berg/SimplePLC/actions/workflows/cmake-multi-platform.yml)
 
 A lightweight software-based PLC. Its main use-case is fast-track prototyping and testing for cybersecurity research purposes.
 
@@ -11,7 +12,7 @@ This project is a software-based PLC (Programmable Logic Controller) implementat
 * Supports read/write coils, descret input, holding register and input registers.
 * Includes device identification and slave ID reporting capabilities
 * Lua is used to program the PLC
-* Cyclic execution model at 100ms cycle / scan time (no guarantee - may cause jitter)
+* Cyclic execution model at 100ms cycle / scan time (no guarantee - will cause jitter)
 * Multithreaded with seperate threads for PLC logic execution and modbus server
 
 ## Areas of Improvements
