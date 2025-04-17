@@ -18,20 +18,42 @@
 
 // Platform-independent terminal functions
 namespace platform {
+    // Forward declaration of platform-specific data
+#ifdef _WIN32
+    struct TerminalState {
+        // Windows doesn't need state
+    };
+#else
+    struct TerminalState {
+        termios original;
+    };
+#endif
+
+    static TerminalState terminal_state;
+
     inline void enableRawMode() {
 #ifdef _WIN32
         // Windows doesn't need special setup for raw mode with _kbhit()
 #else
-        struct termios raw;
-        tcgetattr(STDIN_FILENO, &raw);
+        termios raw;
+        tcgetattr(STDIN_FILENO, &terminal_state.original);
+        raw = terminal_state.original;
         raw.c_lflag &= ~(ICANON | ECHO);
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 #endif
     }
 
+    inline void disableRawMode() {
+#ifdef _WIN32
+        // Windows doesn't need cleanup
+#else
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminal_state.original);
+#endif
+    }
+
     inline bool kbhit() {
 #ifdef _WIN32
-        return _kbhit() != 0;
+        return ::_kbhit() != 0;
 #else
         struct timeval tv = {0L, 0L};
         fd_set fds;
@@ -43,7 +65,7 @@ namespace platform {
 
     inline int getch() {
 #ifdef _WIN32
-        return _getch();
+        return ::_getch();
 #else
         return getchar();
 #endif

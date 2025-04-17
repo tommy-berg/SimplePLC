@@ -32,7 +32,7 @@ void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* r
     response[5] = len & 0xFF;
     int total = 6 + len;
 
-    if (send(socket, response, total, 0) < 0)
+    if (::send(socket, reinterpret_cast<const char*>(response), total, 0) < 0)
         std::cerr << "send_report_slave_id failed" << std::endl;
 }
 
@@ -59,7 +59,7 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
     uint16_t data_len = (16 + len) - 6;
     response[4] = (data_len >> 8) & 0xFF;
     response[5] = data_len & 0xFF;
-    if (send(socket, response, 16 + len, 0) < 0)
+    if (::send(socket, reinterpret_cast<const char*>(response), 16 + len, 0) < 0)
         std::cerr << "send_read_device_id failed" << std::endl;
 }
 
