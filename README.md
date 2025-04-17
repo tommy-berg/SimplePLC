@@ -87,6 +87,10 @@ Nmap done: 1 IP address (1 host up) scanned in 0.07 seconds
 ````
 
 ## Example - controling a conveyor in Factory IO
+![Image](/example/Factory%20IO%20-%20Scene%201/from-a-to-b.png "Conveyor")
+
+
+
 The following code-snippet controls a conveyor in FactoryIO. FactoryIO must run on a Windows PC and must be configured to connect as a modbus client to the IP-address of the machine running SimplePLC.
 
 
