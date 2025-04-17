@@ -27,7 +27,6 @@ jobs:
             build_type: Release
             toolchain_file: '${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake'
 
-
     steps:
     - uses: actions/checkout@v4
 
@@ -37,7 +36,7 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y build-essential clang pkg-config cmake \
-                             libmodbus-dev liblua5.3-dev
+                             libmodbus-dev liblua5.3-dev zip
 
     # ---------- Windows Dependencies ----------
     - name: Install vcpkg
@@ -45,10 +44,6 @@ jobs:
       run: |
         git clone https://github.com/microsoft/vcpkg.git
         .\vcpkg\bootstrap-vcpkg.bat
-
-    - name: Verify vcpkg packages
-      if: runner.os == 'Windows'
-      run: .\vcpkg\vcpkg list
 
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
@@ -83,7 +78,16 @@ jobs:
     - name: Strip binaries (Linux)
       if: runner.os == 'Linux'
       run: |
-        strip build/SimplePLC || echo "strip failed (likely dynamic build fallback)"
+        strip build/SimplePLC || echo "strip failed (likely dynamic fallback)"
+
+    # ---------- Verify Binary ----------
+    - name: Verify binary exists (Linux)
+      if: runner.os == 'Linux'
+      run: test -f build/SimplePLC || (echo "Binary not found!" && exit 1)
+
+    - name: Verify binary exists (Windows)
+      if: runner.os == 'Windows'
+      run: if not exist build\Release\SimplePLC.exe exit 1
 
     # ---------- Package ----------
     - name: Package (Linux)
