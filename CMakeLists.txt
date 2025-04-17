@@ -1,22 +1,24 @@
-cmake_minimum_required(VERSION 3.10)
-project(modbus_server)
+cmake_minimum_required(VERSION 3.16)     
+project(SimplePLC LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBMODBUS REQUIRED libmodbus)
+find_package(Lua QUIET)
+if (NOT Lua_FOUND)
+    find_package(unofficial-lua CONFIG REQUIRED)
+    set(LUA_LIBRARIES unofficial-lua::lua)
+endif()
 
-find_package(Lua REQUIRED)
-include_directories(${LUA_INCLUDE_DIR})
+if (WIN32)
+    find_package(libmodbus CONFIG REQUIRED)   # supplied by vcpkg :contentReference[oaicite:0]{index=0}
+    set(LIBMODBUS_TARGET libmodbus::libmodbus)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBMODBUS REQUIRED libmodbus)
+endif()
 
-include_directories(${LIBMODBUS_INCLUDE_DIRS})
-link_directories(${LIBMODBUS_LIBRARY_DIRS})
-
-find_package(Curses REQUIRED)
-include_directories(${CURSES_INCLUDE_DIR})
-
-add_executable(modbus_server
+add_executable(SimplePLC
     src/main.cpp
     src/server.cpp
     src/modbus_handler.cpp
@@ -25,4 +27,11 @@ add_executable(modbus_server
     src/plc_logic.cpp
 )
 
-target_link_libraries(modbus_server ${LIBMODBUS_LIBRARIES} ${LUA_LIBRARIES} ${CURSES_LIBRARIES})
+if (WIN32)
+    target_link_libraries(SimplePLC PRIVATE ${LIBMODBUS_TARGET} ${LUA_LIBRARIES})
+else()
+    target_include_directories(SimplePLC PRIVATE
+        ${LIBMODBUS_INCLUDE_DIRS} ${LUA_INCLUDE_DIR})
+    target_link_directories(SimplePLC PRIVATE ${LIBMODBUS_LIBRARY_DIRS})
+    target_link_libraries(SimplePLC PRIVATE ${LIBMODBUS_LIBRARIES} ${LUA_LIBRARIES})
+endif()
