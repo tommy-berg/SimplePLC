@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <cstdint>
 
 struct DeviceInfo {
     std::string slave_name;         
