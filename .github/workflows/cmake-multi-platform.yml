@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write 
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -25,7 +28,7 @@ jobs:
             c_compiler: cl
             cpp_compiler: cl
             build_type: Release
-            toolchain_file: '${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake'
+            toolchain_file: '${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake'
 
     steps:
     - uses: actions/checkout@v4
@@ -68,7 +71,7 @@ jobs:
           -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} ^
           -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} ^
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake
+          -DCMAKE_TOOLCHAIN_FILE=${{ matrix.toolchain_file }}
 
     # ---------- Build ----------
     - name: Build
