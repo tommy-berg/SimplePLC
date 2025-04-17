@@ -46,6 +46,10 @@ jobs:
         git clone https://github.com/microsoft/vcpkg.git
         .\vcpkg\bootstrap-vcpkg.bat
 
+    - name: Verify vcpkg packages
+      if: runner.os == 'Windows'
+      run: .\vcpkg\vcpkg list
+
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
       run: |
@@ -53,13 +57,13 @@ jobs:
 
     # ---------- Configure ----------
     - name: Configure (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        cmake -S . -B build \
-          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
-          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-          -DCMAKE_EXE_LINKER_FLAGS="-static"
+    if: runner.os == 'Linux'
+    run: |
+      cmake -S . -B build \
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+        -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
 
     - name: Configure (Windows)
       if: runner.os == 'Windows'
