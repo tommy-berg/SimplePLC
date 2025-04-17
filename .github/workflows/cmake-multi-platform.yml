@@ -7,33 +7,43 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write 
+  contents: write   # needed so the release step can upload assets
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
       matrix:
         include:
+          # ---------- Linux ----------
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
             build_type: Release
+            triplet: x64-linux
+
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             build_type: Release
+            triplet: x64-linux
+
+          # ---------- Windows ----------
           - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
             build_type: Release
-            toolchain_file: '${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake'
+            triplet: x64-windows-static   # used by vcpkg + CMake
 
     steps:
+    # -----------------------------------------------------------------------
+    # 1 Checkout
+    # -----------------------------------------------------------------------
     - uses: actions/checkout@v4
 
-    # ---------- Linux Dependencies ----------
+    # -----------------------------------------------------------------------
+    # 2 Dependencies – Linux
+    # -----------------------------------------------------------------------
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
@@ -41,19 +51,28 @@ jobs:
         sudo apt install -y build-essential clang pkg-config cmake \
                              libmodbus-dev liblua5.3-dev zip
 
-    # ---------- Windows Dependencies ----------
+    # -----------------------------------------------------------------------
+    # 3 Dependencies – Windows (vcpkg)
+    # -----------------------------------------------------------------------
     - name: Install vcpkg
       if: runner.os == 'Windows'
       run: |
         git clone https://github.com/microsoft/vcpkg.git
         .\vcpkg\bootstrap-vcpkg.bat
 
+    - name: Set VCPKG_ROOT
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
       run: |
-        .\vcpkg\vcpkg install libmodbus lua pkgconf --triplet x64-windows-static
+        .\vcpkg\vcpkg install libmodbus lua pkgconf --triplet ${{ matrix.triplet }}
 
-    # ---------- Configure ----------
+    # -----------------------------------------------------------------------
+    # 4 Configure
+    # -----------------------------------------------------------------------
     - name: Configure (Linux)
       if: runner.os == 'Linux'
       run: |
@@ -68,22 +87,28 @@ jobs:
       shell: cmd
       run: >
         cmake -S . -B build ^
-          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} ^
-          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} ^
+          -G "Visual Studio 17 2022" -A x64 ^
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
-          -DCMAKE_TOOLCHAIN_FILE=${{ matrix.toolchain_file }}
+          -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
 
-    # ---------- Build ----------
+    # -----------------------------------------------------------------------
+    # 5 Build
+    # -----------------------------------------------------------------------
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
 
-    # ---------- Strip Binaries ----------
+    # -----------------------------------------------------------------------
+    # 6 Strip binaries (Linux)
+    # -----------------------------------------------------------------------
     - name: Strip binaries (Linux)
       if: runner.os == 'Linux'
       run: |
         strip build/SimplePLC || echo "strip failed (likely dynamic fallback)"
 
-    # ---------- Verify Binary ----------
+    # -----------------------------------------------------------------------
+    # 7 Verify binaries exist
+    # -----------------------------------------------------------------------
     - name: Verify binary exists (Linux)
       if: runner.os == 'Linux'
       run: test -f build/SimplePLC || (echo "Binary not found!" && exit 1)
@@ -92,7 +117,9 @@ jobs:
       if: runner.os == 'Windows'
       run: if not exist build\Release\SimplePLC.exe exit 1
 
-    # ---------- Package ----------
+    # -----------------------------------------------------------------------
+    # 8 Package artifacts
+    # -----------------------------------------------------------------------
     - name: Package (Linux)
       if: runner.os == 'Linux'
       run: |
@@ -104,10 +131,12 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         mkdir dist
-        copy build\\Release\\SimplePLC.exe dist\\
-        powershell Compress-Archive -Path dist\\* -DestinationPath SimplePLC-${{ matrix.os }}-${{ github.ref_name }}.zip
+        copy build\Release\SimplePLC.exe dist\
+        powershell Compress-Archive -Path dist\* -DestinationPath SimplePLC-${{ matrix.os }}-${{ github.ref_name }}.zip
 
-    # ---------- Upload to GitHub Release ----------
+    # -----------------------------------------------------------------------
+    # 9 Publish release (tags only)
+    # -----------------------------------------------------------------------
     - name: Publish GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
