@@ -40,3 +40,39 @@ bool LuaHooks::override_register(int address, uint16_t& value_out) {
     lua_pop(L, 1);
     return true;
 }
+
+void LuaHooks::update_all_registers(modbus_mapping_t* mapping) {
+    if (!mapping) return;
+
+    // Update coils (0xxxx)
+    for (int i = 0; i < mapping->nb_bits; i++) {
+        uint16_t value;
+        if (override_register(i, value)) {
+            mapping->tab_bits[i] = value ? 1 : 0;
+        }
+    }
+
+    // Update discrete inputs (1xxxx)
+    for (int i = 0; i < mapping->nb_input_bits; i++) {
+        uint16_t value;
+        if (override_register(10000 + i, value)) {
+            mapping->tab_input_bits[i] = value ? 1 : 0;
+        }
+    }
+
+    // Update input registers (3xxxx)
+    for (int i = 0; i < mapping->nb_input_registers; i++) {
+        uint16_t value;
+        if (override_register(30000 + i, value)) {
+            mapping->tab_input_registers[i] = value;
+        }
+    }
+
+    // Update holding registers (4xxxx)
+    for (int i = 0; i < mapping->nb_registers; i++) {
+        uint16_t value;
+        if (override_register(40000 + i, value)) {
+            mapping->tab_registers[i] = value;
+        }
+    }
+}

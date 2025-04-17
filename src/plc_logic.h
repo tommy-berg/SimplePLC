@@ -11,6 +11,7 @@ public:
     static void start(modbus_mapping_t* mapping);
     static void stop();
     static void loadScript(const std::string& scriptPath);
+    static void reloadScript(const std::string& scriptPath);
 
 private:
     static void loop();

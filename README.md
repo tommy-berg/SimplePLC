@@ -11,14 +11,20 @@ This project is a software-based PLC (Programmable Logic Controller) implementat
 * Supports read/write coils, descret input, holding register and input registers.
 * Includes device identification and slave ID reporting capabilities
 * Lua is used to program the PLC
-* Event loop architechure
+* Cyclic execution model at 100ms cycle / scan time (no guarantee - may cause jitter)
+* Multithreaded with seperate threads for PLC logic execution and modbus server
 
 ## Areas of Improvements
 * Static linking of libraries for easy distribution to Linux/Mac/Windows
 * Proper logging mechanisms
 * Hot-reload of PLC user-code
 * IEC 61131-3 Compliance (ST/Ladder/FBD)
-* Real-time scheduling
+* Cycle monitoring with detection of scan time violation
+* Fault generation for missed deadlines
+* Cycle time statisics and monitoring
+* Real-time scheduling / better timing guarantees
+* Benchmarking and testing on RTOS or patchign linux kernel with PREEMPT_RT
+* Multicore for parallel processing
 * Robus error handling
 * EtherCAT, Profinet
 * MTQQ or OPC/UA support

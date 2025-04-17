@@ -2,6 +2,8 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include <termios.h>
+#include <unistd.h>
 
 // Constants
 constexpr int BLINK_OUTPUT_BIT = 0;
@@ -19,6 +21,22 @@ static uint64_t now_ms() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
+
+static void enableRawMode() {
+    struct termios raw;
+    tcgetattr(STDIN_FILENO, &raw);
+    raw.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+static int kbhit() {
+    struct timeval tv = {0L, 0L};
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    return select(1, &fds, NULL, NULL, &tv);
+}
+
 void PlcLogic::start(modbus_mapping_t* mapping) {
     if (!mapping) {
         throw std::runtime_error("Invalid Modbus mapping");
@@ -90,6 +108,31 @@ void PlcLogic::loadScript(const std::string& scriptPath) {
     std::cout << "[PLC] Lua script loaded successfully" << std::endl;
 }
 
+void PlcLogic::reloadScript(const std::string& scriptPath) {
+    std::cout << "\n[PLC] Reloading script: " << scriptPath << std::endl;
+    std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
+    if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
+        std::cerr << "[PLC] Failed to acquire mutex for script reload" << std::endl;
+        return;
+    }
+
+    if (lua_state) {
+        lua_close(lua_state);
+    }
+    
+    lua_state = luaL_newstate();
+    luaL_openlibs(lua_state);
+    setupLuaBindings(lua_state);
+    
+    if (luaL_dofile(lua_state, scriptPath.c_str()) != 0) {
+        std::string error = lua_tostring(lua_state, -1);
+        lua_pop(lua_state, 1);
+        std::cerr << "[PLC] Failed to reload Lua script: " << error << std::endl;
+    } else {
+        std::cout << "[PLC] Script reloaded successfully" << std::endl;
+    }
+}
+
 int PlcLogic::lua_readCoil(lua_State* L) {
     int addr = luaL_checkinteger(L, 1);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
@@ -123,87 +166,18 @@ int PlcLogic::lua_writeCoil(lua_State* L) {
 }
 
 int PlcLogic::lua_readDiscreteInput(lua_State* L) {
-    try {
-        std::cout << "[PLC-DEBUG] lua_readDiscreteInput called" << std::endl << std::flush;
-        
-        // Check if we have an argument
-        if (lua_gettop(L) < 1) {
-            std::cerr << "[PLC-ERROR] No address provided to readDiscreteInput" << std::endl << std::flush;
-            lua_pushnil(L);
-            return 1;
-        }
-        
-        // Debug point 1
-        std::cout << "[PLC-DEBUG] Checking address argument" << std::endl << std::flush;
-        
-        int addr = luaL_checkinteger(L, 1);
-        std::cout << "[PLC-DEBUG] Reading discrete input at address: " << addr << std::endl << std::flush;
-        
-        // Debug point 2
-        std::cout << "[PLC-DEBUG] Checking mb_mapping" << std::endl << std::flush;
-        
-        if (!mb_mapping) {
-            std::cerr << "[PLC-ERROR] Modbus mapping is null" << std::endl << std::flush;
-            lua_pushnil(L);
-            return 1;
-        }
-        
-        // Debug point 3
-        std::cout << "[PLC-DEBUG] Attempting to acquire mutex" << std::endl << std::flush;
-        
-        std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
-        if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
-            std::cerr << "[PLC-ERROR] Failed to acquire mutex within timeout" << std::endl << std::flush;
-            lua_pushnil(L);
-            return 1;
-        }
-        
-        std::cout << "[PLC-DEBUG] Mutex acquired successfully" << std::endl << std::flush;
-        
-        // Debug point 4
-        std::cout << "[PLC-DEBUG] Checking input bits array" << std::endl << std::flush;
-        
-        if (!mb_mapping->tab_input_bits) {
-            std::cerr << "[PLC-ERROR] Input bits array is null" << std::endl << std::flush;
-            lua_pushnil(L);
-            return 1;
-        }
-        
-        std::cout << "[PLC-DEBUG] Number of input bits available: " << mb_mapping->nb_input_bits << std::endl << std::flush;
-        std::cout << "[PLC-DEBUG] Input bits array address: " << (void*)mb_mapping->tab_input_bits << std::endl << std::flush;
-        
-        if (addr >= 0 && addr < mb_mapping->nb_input_bits) {
-            // Debug point 5
-            std::cout << "[PLC-DEBUG] Reading value from address" << std::endl << std::flush;
-            
-            bool value = mb_mapping->tab_input_bits[addr];
-            std::cout << "[PLC-DEBUG] Read value: " << value << std::endl << std::flush;
-            
-            // Debug point 6
-            std::cout << "[PLC-DEBUG] Pushing value to Lua stack" << std::endl << std::flush;
-            
-            lua_pushboolean(L, value);
-            std::cout << "[PLC-DEBUG] Pushed boolean value to Lua stack" << std::endl << std::flush;
-        } else {
-            std::cout << "[PLC-DEBUG] Address " << addr << " out of range (max: " 
-                      << mb_mapping->nb_input_bits - 1 << ")" << std::endl << std::flush;
-            lua_pushnil(L);
-            std::cout << "[PLC-DEBUG] Pushed nil to Lua stack" << std::endl << std::flush;
-        }
-        
-        // Debug point 7
-        std::cout << "[PLC-DEBUG] Function completing normally" << std::endl << std::flush;
-        return 1;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "[PLC-ERROR] Exception in lua_readDiscreteInput: " << e.what() << std::endl << std::flush;
-        lua_pushnil(L);
-        return 1;
-    } catch (...) {
-        std::cerr << "[PLC-ERROR] Unknown exception in lua_readDiscreteInput" << std::endl << std::flush;
+    int addr = luaL_checkinteger(L, 1);
+    std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
+    if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushnil(L);
         return 1;
     }
+    if (addr >= 0 && addr < mb_mapping->nb_input_bits) {
+        lua_pushboolean(L, mb_mapping->tab_input_bits[addr]);
+    } else {
+        lua_pushnil(L);
+    }
+    return 1;
 }
 
 int PlcLogic::lua_readHoldingRegister(lua_State* L) {
@@ -330,6 +304,9 @@ void PlcLogic::setupLuaBindings(lua_State* L) {
     lua_pushcfunction(L, lua_readDiscreteInput);
     lua_setfield(L, -2, "readDiscreteInput");
     
+    lua_pushcfunction(L, lua_writeDiscreteInput);
+    lua_setfield(L, -2, "writeDiscreteInput");
+
     lua_pushcfunction(L, lua_readHoldingRegister);
     lua_setfield(L, -2, "readHoldingRegister");
     
@@ -342,19 +319,29 @@ void PlcLogic::setupLuaBindings(lua_State* L) {
     lua_pushcfunction(L, lua_writeInputRegister);
     lua_setfield(L, -2, "writeInputRegister");
     
-    lua_pushcfunction(L, lua_writeDiscreteInput);
-    lua_setfield(L, -2, "writeDiscreteInput");
+
     
     lua_setglobal(L, "modbus");
 }
 
 void PlcLogic::loop() {
     std::cout << "[PLC] Logic thread starting... " << std::endl;
+    std::cout << "[PLC] Press SPACE to reload the script" << std::endl;
     
+    enableRawMode();
     constexpr std::chrono::milliseconds SCAN_TIME(100);
     int cycle_count = 0;
+    std::string scriptPath = "plc_logic.lua"; // Store script path
 
     while (running) {
+        // Check for space key press
+        if (kbhit()) {
+            char c = getchar();
+            if (c == ' ') {
+                reloadScript(scriptPath);
+            }
+        }
+
         lua_State* current_state = nullptr;
         
         // cycle function mutex locked

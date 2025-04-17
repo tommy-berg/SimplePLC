@@ -65,20 +65,45 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
 }
 
 void ModbusHandler::handle_standard_function(modbus_t* ctx, const uint8_t* query, int rc, modbus_mapping_t* mapping) {
+    // Update all registers first
+    hooks.update_all_registers(mapping);
+
+    // Now handle the specific write operations
     uint8_t function_code = query[7];
+    int addr = (query[8] << 8) | query[9];
 
-    if (function_code == MODBUS_FC_READ_HOLDING_REGISTERS) {
-        int addr = (query[8] << 8) | query[9];
-        int count = (query[10] << 8) | query[11];
+    switch (function_code) {
+        case MODBUS_FC_WRITE_SINGLE_COIL:       // FC 5
+            mapping->tab_bits[addr] = (query[10] == 0xFF) ? 1 : 0;
+            break;
 
-        for (int i = 0; i < count; ++i) {
-            int addr = addr + i;
-            uint16_t lua_value = 0;
-            if (hooks.override_register(addr, lua_value)) {
-                mapping->tab_registers[addr] = lua_value;
+        case MODBUS_FC_WRITE_SINGLE_REGISTER:   // FC 6
+            mapping->tab_registers[addr] = (query[10] << 8) | query[11];
+            break;
+
+        case MODBUS_FC_WRITE_MULTIPLE_COILS:    // FC 15
+            {
+                int count = (query[10] << 8) | query[11];
+                uint8_t byte_count = query[12];
+                for (int i = 0; i < count; ++i) {
+                    int byte_index = i / 8;
+                    int bit_index = i % 8;
+                    if (byte_index < byte_count) {
+                        mapping->tab_bits[addr + i] = (query[13 + byte_index] >> bit_index) & 0x01;
+                    }
+                }
             }
-        }
+            break;
 
+        case MODBUS_FC_WRITE_MULTIPLE_REGISTERS: // FC 16
+            {
+                int count = (query[10] << 8) | query[11];
+                uint8_t byte_count = query[12];
+                for (int i = 0; i < count && (i * 2) < byte_count; ++i) {
+                    mapping->tab_registers[addr + i] = (query[13 + i * 2] << 8) | query[14 + i * 2];
+                }
+            }
+            break;
     }
 
     if (modbus_reply(ctx, const_cast<uint8_t*>(query), rc, mapping) == -1) {
