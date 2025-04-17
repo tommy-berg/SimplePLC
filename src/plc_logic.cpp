@@ -2,8 +2,7 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
-#include <termios.h>
-#include <unistd.h>
+#include "platform.h"
 
 // Constants
 constexpr int BLINK_OUTPUT_BIT = 0;
@@ -328,15 +327,15 @@ void PlcLogic::loop() {
     std::cout << "[PLC] Logic thread starting... " << std::endl;
     std::cout << "[PLC] Press SPACE to reload the script" << std::endl;
     
-    enableRawMode();
+    platform::enableRawMode();
     constexpr std::chrono::milliseconds SCAN_TIME(100);
     int cycle_count = 0;
     std::string scriptPath = "plc_logic.lua"; // Store script path
 
     while (running) {
         // Check for space key press
-        if (kbhit()) {
-            char c = getchar();
+        if (platform::kbhit()) {
+            char c = platform::getch();
             if (c == ' ') {
                 reloadScript(scriptPath);
             }

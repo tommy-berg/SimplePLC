@@ -1,7 +1,9 @@
 #include "server.h"
+#include <iostream>
+#include <thread>
+#include "platform.h"
 #include "modbus_handler.h"
 #include <modbus.h>
-#include <iostream>
 #include <unistd.h>
 #include "plc_logic.h"
 

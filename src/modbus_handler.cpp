@@ -1,7 +1,7 @@
 #include "modbus_handler.h"
 #include <cstring>
 #include <iostream>
-#include <unistd.h>
+#include "platform.h"
 #include <sys/socket.h>
 #include <random>
 #include "lua_hooks.h"
