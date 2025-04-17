@@ -4,46 +4,37 @@ project(SimplePLC LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ───────────── Lua (system or vcpkg) ─────────────
-find_package(Lua QUIET)
+# ─────────────── Lua (works everywhere) ───────────────
+find_package(Lua REQUIRED)                   # built‑in module
 
-if (NOT Lua_FOUND)
-    message(STATUS "System Lua not found, trying vcpkg's lua...")
-    find_package(lua CONFIG REQUIRED)  # vcpkg's lua provides this
-    if (TARGET lua::lua)
-        set(LUA_TARGET lua::lua)
-    else()
-        message(FATAL_ERROR "vcpkg's Lua target 'lua::lua' is missing.")
+add_library(lua::lua INTERFACE IMPORTED)     # single canonical name
+set_target_properties(lua::lua PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
+    INTERFACE_LINK_LIBRARIES      "${LUA_LIBRARIES}"
+)
+
+# ────────────── libmodbus (platform split) ─────────────
+if(WIN32)
+    # vcpkg provides config + target 'modbus'
+    find_package(libmodbus CONFIG REQUIRED)  # exports target 'modbus'
+    if(TARGET modbus AND NOT TARGET libmodbus::libmodbus)
+        add_library(libmodbus::libmodbus ALIAS modbus)
     endif()
 else()
-    message(STATUS "Found system Lua")
-    add_library(lua_fallback INTERFACE)
-    target_include_directories(lua_fallback INTERFACE ${LUA_INCLUDE_DIR})
-    target_link_libraries(lua_fallback INTERFACE ${LUA_LIBRARIES})
-    set(LUA_TARGET lua_fallback)
-endif()
-
-# ───────────── libmodbus (system or vcpkg) ─────────────
-if (WIN32)
-    find_package(libmodbus CONFIG REQUIRED)
-else()
+    # Linux / macOS → pkg‑config
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBMODBUS REQUIRED libmodbus)
+
+    if(NOT TARGET libmodbus::libmodbus)
+        add_library(libmodbus::libmodbus INTERFACE IMPORTED)
+        set_target_properties(libmodbus::libmodbus PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBMODBUS_INCLUDE_DIRS}"
+            INTERFACE_LINK_LIBRARIES      "${LIBMODBUS_LIBRARIES}"
+        )
+    endif()
 endif()
 
-if (TARGET modbus AND NOT TARGET libmodbus::libmodbus)
-    add_library(libmodbus::libmodbus ALIAS modbus)
-endif()
-
-if (TARGET libmodbus::libmodbus)
-    set(LIBMODBUS_LINK libmodbus::libmodbus)
-elseif (LIBMODBUS_LIBRARIES)
-    set(LIBMODBUS_LINK ${LIBMODBUS_LIBRARIES})  # from pkg-config
-else()
-    message(FATAL_ERROR "libmodbus target or libraries not found.")
-endif()
-
-# ───────────── Executable ─────────────
+# ────────────────── Executable ──────────────────
 add_executable(SimplePLC
     src/main.cpp
     src/server.cpp
@@ -53,20 +44,12 @@ add_executable(SimplePLC
     src/plc_logic.cpp
 )
 
-if (WIN32)
-    target_link_libraries(SimplePLC PRIVATE
-        ${LIBMODBUS_LINK}
-        ${LUA_TARGET}
-    )
-else()
-    target_include_directories(SimplePLC PRIVATE
-        ${LIBMODBUS_INCLUDE_DIRS}
-    )
-    target_link_directories(SimplePLC PRIVATE
-        ${LIBMODBUS_LIBRARY_DIRS}
-    )
-    target_link_libraries(SimplePLC PRIVATE
-        ${LIBMODBUS_LINK}
-        ${LUA_TARGET}
-    )
+# Add pkg‑config’s -L path on non‑Windows hosts
+if(NOT WIN32)
+    target_link_directories(SimplePLC PRIVATE ${LIBMODBUS_LIBRARY_DIRS})
 endif()
+
+target_link_libraries(SimplePLC PRIVATE
+    libmodbus::libmodbus
+    lua::lua
+)

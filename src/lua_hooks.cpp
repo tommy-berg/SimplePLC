@@ -5,7 +5,7 @@ LuaHooks::LuaHooks(const std::string& script) {
     L = luaL_newstate();
     luaL_openlibs(L);
     if (luaL_dofile(L, script.c_str()) != LUA_OK) {
-        std::cerr << "Failed to load Lua script: " << lua_tostring(L, -1) << "\n";
+        std::cerr << "[Error] Failed to load Lua script: " << lua_tostring(L, -1) << "\n";
         L = nullptr;
     }
 }

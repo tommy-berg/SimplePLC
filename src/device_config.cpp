@@ -45,12 +45,13 @@ void DeviceConfig::load(const std::string& ini_file) {
         if (current_section == "Device") {
             if (key == "slave_name") {
                 device.slave_name = value;
-                std::cout << "[Info] Device name set to: " << value << std::endl;
-        }
-            else if (key == "device_identification") {device.device_id_string = value;
-                std::cout << "[Info] Device ID string set to: " << value << std::endl;
             }
-            else if (key == "slave_id") device.slave_id = static_cast<uint8_t>(std::stoi(value));
+            else if (key == "device_identification") {
+                device.device_id_string = value;
+            }
+            else if (key == "slave_id") {
+                device.slave_id = static_cast<uint8_t>(std::stoi(value));
+            }
             else if (key == "run_indicator") device.run_indicator = static_cast<uint8_t>(std::stoi(value));
         }
     }

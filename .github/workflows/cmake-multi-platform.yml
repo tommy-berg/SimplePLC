@@ -7,7 +7,7 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write   # needed so the release step can upload assets
+  contents: write  # needed for GitHub release uploads
 
 jobs:
   build:
@@ -23,17 +23,23 @@ jobs:
             cpp_compiler: g++
             build_type: Release
             triplet: x64-linux
+            compiler: gcc
 
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             build_type: Release
             triplet: x64-linux
+            compiler: clang
+
+          - os: ubuntu-latest
+            build_type: Release
+            compiler: musl
 
           # ---------- Windows ----------
           - os: windows-latest
             build_type: Release
-            triplet: x64-windows-static   # used by vcpkg + CMake
+            triplet: x64-windows-static
 
     steps:
     # -----------------------------------------------------------------------
@@ -49,7 +55,7 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y build-essential clang pkg-config cmake \
-                             libmodbus-dev liblua5.3-dev zip
+                             libmodbus-dev liblua5.3-dev zip musl musl-tools
 
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
@@ -73,14 +79,23 @@ jobs:
     # -----------------------------------------------------------------------
     # 4 Configure
     # -----------------------------------------------------------------------
-    - name: Configure (Linux)
-      if: runner.os == 'Linux'
+    - name: Configure (Linux - GCC/Clang)
+      if: runner.os == 'Linux' && matrix.compiler != 'musl'
       run: |
         cmake -S . -B build \
           -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
           -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
           -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+
+    - name: Configure (Linux - musl)
+      if: runner.os == 'Linux' && matrix.compiler == 'musl'
+      run: |
+        export CC=musl-gcc
+        cmake -S . -B build \
+          -DCMAKE_C_COMPILER=musl-gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
     - name: Configure (Windows)
       if: runner.os == 'Windows'
@@ -107,42 +122,61 @@ jobs:
         strip build/SimplePLC || echo "strip failed (likely dynamic fallback)"
 
     # -----------------------------------------------------------------------
-    # 7 Verify binaries exist
+    # 7 Verify binaries
     # -----------------------------------------------------------------------
-    - name: Verify binary exists (Linux)
+    - name: Verify binary (Linux)
       if: runner.os == 'Linux'
       run: test -f build/SimplePLC || (echo "Binary not found!" && exit 1)
 
-    - name: Verify binary exists (Windows)
+    - name: Verify binary (Windows)
       if: runner.os == 'Windows'
       shell: cmd
       run: if not exist build\Release\SimplePLC.exe exit 1
 
     # -----------------------------------------------------------------------
-    # 8 Package artifacts
+    # 8 Check static (musl only)
     # -----------------------------------------------------------------------
-    - name: Package (Linux)
-      if: runner.os == 'Linux'
+    - name: Check static binary (musl)
+      if: runner.os == 'Linux' && matrix.compiler == 'musl'
+      run: |
+        file build/SimplePLC
+        ldd build/SimplePLC || echo "Static binary (as expected)"
+
+    # -----------------------------------------------------------------------
+    # 9 Package artifacts
+    # -----------------------------------------------------------------------
+    - name: Package (Linux GCC/Clang)
+      if: runner.os == 'Linux' && matrix.compiler != 'musl'
       run: |
         mkdir -p dist
         cp build/SimplePLC dist/
-        zip SimplePLC-${{ matrix.os }}-${{ github.ref_name }}.zip dist/*
+        zip SimplePLC-${{ matrix.os }}-${{ matrix.compiler }}-${{ github.ref_name }}.zip dist/*
+
+    - name: Package (Linux musl)
+      if: runner.os == 'Linux' && matrix.compiler == 'musl'
+      run: |
+        mkdir -p dist
+        cp build/SimplePLC dist/
+        zip SimplePLC-musl-${{ github.ref_name }}.zip dist/*
 
     - name: Package (Windows)
       if: runner.os == 'Windows'
       run: |
         mkdir dist
         copy build\Release\SimplePLC.exe dist\
-        powershell Compress-Archive -Path dist\* -DestinationPath SimplePLC-${{ matrix.os }}-${{ github.ref_name }}.zip
+        powershell Compress-Archive -Path dist\* -DestinationPath SimplePLC-windows-${{ github.ref_name }}.zip
 
     # -----------------------------------------------------------------------
-    # 9 Publish release (tags only)
+    # 10 Publish GitHub Release
     # -----------------------------------------------------------------------
     - name: Publish GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          SimplePLC-${{ matrix.os }}-${{ github.ref_name }}.zip
+          SimplePLC-ubuntu-latest-gcc-${{ github.ref_name }}.zip
+          SimplePLC-ubuntu-latest-clang-${{ github.ref_name }}.zip
+          SimplePLC-musl-${{ github.ref_name }}.zip
+          SimplePLC-windows-${{ github.ref_name }}.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

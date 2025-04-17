@@ -24,7 +24,7 @@ int ModbusServer::run() {
     
     int listen_socket = modbus_tcp_listen(ctx, 1);
     PlcLogic::start(mapping_);
-    PlcLogic::loadScript("plc_logic.lua");
+    PlcLogic::loadScript("active.plc");
     while (true) {
         int client_socket = modbus_tcp_accept(ctx, &listen_socket);
         if (client_socket == -1) continue;
