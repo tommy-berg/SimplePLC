@@ -25,7 +25,7 @@ jobs:
             c_compiler: cl
             cpp_compiler: cl
             build_type: Release
-            toolchain_file: '${{ runner.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake'
+            toolchain_file: '${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake'
 
 
     steps:
