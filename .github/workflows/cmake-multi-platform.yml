@@ -36,7 +36,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt update
-        sudo apt install -y libmodbus-dev liblua5.3-dev libncurses-dev pkg-config cmake make g++
+        sudo apt install -y libmodbus-dev liblua5.3-dev pkg-config cmake make g++
 
     - name: Install vcpkg (Windows)
       if: matrix.os == 'windows-latest'
@@ -47,7 +47,7 @@ jobs:
     - name: Install packages via vcpkg (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        .\vcpkg\vcpkg install libmodbus lua ncurses --triplet x64-windows-static
+        .\vcpkg\vcpkg install libmodbus lua --triplet x64-windows-static
 
     - name: Configure CMake
       run: >
