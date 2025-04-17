@@ -1,4 +1,4 @@
-name: Build and Release SimplePLC
+name: Windows-and-Linux-build
 
 on:
   push:

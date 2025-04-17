@@ -11,6 +11,14 @@ LuaHooks::LuaHooks(const std::string& script) {
 }
 
 LuaHooks::~LuaHooks() {
+    // Stop the update thread if running
+    if (running) {
+        running = false;
+        if (update_thread.joinable()) {
+            update_thread.join();
+        }
+    }
+    
     if (L) lua_close(L);
 }
 
@@ -75,4 +83,43 @@ void LuaHooks::update_all_registers(modbus_mapping_t* mapping) {
             mapping->tab_registers[i] = value;
         }
     }
+}
+
+void LuaHooks::start_periodic_updates(modbus_mapping_t* mapping, int update_ms) {
+    if (running) {
+        std::cerr << "[LuaHooks] Periodic updates already running" << std::endl;
+        return;
+    }
+    
+    if (!mapping) {
+        std::cerr << "[LuaHooks] Cannot start updates with null mapping" << std::endl;
+        return;
+    }
+    
+    mb_mapping = mapping;
+    running = true;
+    
+    try {
+        update_thread = std::thread(&LuaHooks::update_thread_func, this, update_ms);
+        std::cout << "[LuaHooks] Started periodic updates every " << update_ms << "ms" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[LuaHooks] Failed to start update thread: " << e.what() << std::endl;
+        running = false;
+    }
+}
+
+void LuaHooks::update_thread_func(int update_ms) {
+    std::cout << "[LuaHooks] Update thread started" << std::endl;
+    
+    while (running) {
+        {
+            std::lock_guard<std::mutex> lock(mapping_mutex);
+            update_all_registers(mb_mapping);
+        }
+        
+        // Sleep for the specified interval
+        std::this_thread::sleep_for(std::chrono::milliseconds(update_ms));
+    }
+    
+    std::cout << "[LuaHooks] Update thread stopped" << std::endl;
 }

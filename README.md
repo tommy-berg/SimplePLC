@@ -5,20 +5,42 @@
 A lightweight software-based PLC. Its main use-case is fast-track prototyping and testing for cybersecurity research purposes.
 
 ## Description
-This project is a software-based PLC (Programmable Logic Controller) implementation that combines Modbus communication capabilities with Lua scripting for control logic. It's a "soft PLC" implementation, meaning it's a software program that emulates PLC functionality on standard computing hardware rather than dedicated PLC hardware.
+SimplePLC is a software-based Programmable Logic Controller (PLC) that combines industrial automation protocols with scripting capabilities. It functions as a "soft PLC" - software that emulates traditional PLC functionality on standard computing hardware rather than dedicated industrial hardware.
 
-## Key Components
-* I/O Operations via Modbus for Industrial Communication
-* Supports read/write coils, descret input, holding register and input registers.
-* Includes device identification and slave ID reporting capabilities
-* Lua is used to program the PLC
-* Cyclic execution model at 100ms cycle / scan time (no guarantee - will cause jitter)
-* Multithreaded with seperate threads for PLC logic execution and modbus server
+The system provides a foundation for industrial automation tasks with support for standard industrial protocols, customizable logic, and multi-client capabilities.
+
+Data exchange between the PLC logic and communication protocols is handled through a shared memory mapping that's protected by appropriate thread synchronization mechanisms.
+
+## Current Capabilities
+* Modbus TCP Server: Fully implemented with support for multiple concurrent client connections
+* OPC UA Server: Provides standardized data exchange for industrial applications
+* Protocol Interoperability: Seamless data exchange between Modbus and OPC UA
+
+### Modbus Features
+* Complete Register Support
+* * Coils (digital outputs)
+* * Discrete inputs (digital inputs)
+* * Holding registers (analog outputs/setpoints)
+* * Input registers (analog inputs)
+* Extended Functions: Support for device identification and slave ID reporting
+* Connection Management: Tracks client connections with statistics and proper resource management
+* Robust Socket Handling
+
+### Programming and Logic
+* Lua-scripting to program control logic
+* Hot-reload capabilities - update plc code without stopping the system
+* 100ms cyclic execution - predictable execution model for control logic
+
+### Architecture
+* Multithreaded Design: Separate threads for PLC logic execution and protocol servers
+* Cross-Platform: Runs on Linux, macOS, and Windows with static linking for easy distribution
+
+## User Interface & Configuration
+* Configuration File: Customize behavior through settings.ini
+* Real-Time Statistics: Monitor connections and system performance
 
 ## Areas of Improvements
-* Static linking of libraries for easy distribution to Linux/Mac/Windows
 * Proper logging mechanisms
-* Hot-reload of PLC user-code
 * IEC 61131-3 Compliance (ST/Ladder/FBD)
 * Cycle monitoring with detection of scan time violation
 * Fault generation for missed deadlines
@@ -28,7 +50,6 @@ This project is a software-based PLC (Programmable Logic Controller) implementat
 * Multicore for parallel processing
 * Robus error handling
 * EtherCAT, Profinet
-* MTQQ or OPC/UA support
 * Proper state machine 
 * * Mode transitions
 * * Program Flow Control
@@ -37,17 +58,37 @@ This project is a software-based PLC (Programmable Logic Controller) implementat
 And much much more... 
 
 ## Getting Started
+Build the project using CMake\
+Configure your settings in settings.ini\
+Write your control logic in Lua\
+Run the PLC with: ```./SimplePLC [optional_config_file]```\
+Connect to the PLC using standard Modbus clients (like mbpoll) or OPC UA clients
+
+### Limitations
+* Limited error handling for some Modbus function codes
+* No real-time guarantees for precise timing (standard OS scheduling)
+* Basic logging capabilities
+* No support for standard IEC 61131-3 programming languages (only Lua scripting)
+
+### Applications
+* Educational environments for learning industrial automation
+* Small-scale automation projects
+* Protocol conversion between Modbus and OPC UA
+* Testing and simulation of industrial control systems
+* Development and prototyping of automation solutions
 
 
 ### Dependencies
 #### Linux
 ```sudo apt install libmodbus```\
-```sudo apt install lua```
+```sudo apt install lua```\
+```sudo apt install libmodbus```\
 
 #### MacOS
 
 ```brew install libmodbus```\
 ```brew install lua```
+```brew install open62541```
 
 ### Installing
 
@@ -62,8 +103,8 @@ make
 Program requires two files to start:
 
 ```settings.ini``` - Device configuration\
-```plc_logic.lua``` - PLC control loop\
-```world.lua``` (Optional) - Override registers with simulated or external values
+```active.plc``` - PLC control loop\
+```world.plc``` (Optional) - Override registers with simulated or external values
 
 Run ```./SimplePLC```  from the same folder where the above mentioned files exist.
 
