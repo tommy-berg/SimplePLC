@@ -19,19 +19,15 @@ jobs:
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
+            build_type: Release
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
+            build_type: Release
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
-        exclude:
-          - os: windows-latest
-            c_compiler: gcc
-          - os: windows-latest
-            c_compiler: clang
-          - os: ubuntu-latest
-            c_compiler: cl
+            build_type: Release
 
     steps:
     - uses: actions/checkout@v4
