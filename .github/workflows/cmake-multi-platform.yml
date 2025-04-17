@@ -46,6 +46,10 @@ jobs:
         git clone https://github.com/microsoft/vcpkg.git
         .\vcpkg\bootstrap-vcpkg.bat
 
+    - name: Debug vcpkg path
+      if: runner.os == 'Windows'
+      run: dir vcpkg\scripts\buildsystems
+
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
       run: |
@@ -68,7 +72,8 @@ jobs:
           -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} ^
           -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} ^
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
-          -DCMAKE_TOOLCHAIN_FILE=${{ matrix.toolchain_file }}
+          -DCMAKE_TOOLCHAIN_FILE=${{ runner.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake
+
 
     # ---------- Build & test -------------------------------------------------
     - name: Build
