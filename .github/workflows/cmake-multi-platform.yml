@@ -1,10 +1,8 @@
 name: CMake on multiple platforms
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  push:        { branches: [main] }
+  pull_request:{ branches: [main] }
 
 jobs:
   build:
@@ -13,9 +11,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        build_type: [Release]
         include:
+          # ─ Linux ────────────────────────────────────────────────────────
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
@@ -24,43 +21,60 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang++
             build_type: Release
+
+          # ─ Windows ─────────────────────────────────────────────────────
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
             build_type: Release
+            toolchain_file: '${{ github.workspace }}\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake'
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install dependencies (Linux)
-      if: matrix.os == 'ubuntu-latest'
+    # ---------- Linux --------------------------------------------------------
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
       run: |
         sudo apt update
-        sudo apt install -y libmodbus-dev liblua5.3-dev pkg-config cmake make g++
+        sudo apt install -y build-essential clang pkg-config cmake \
+                             libmodbus-dev liblua5.3-dev
 
-    - name: Install vcpkg (Windows)
-      if: matrix.os == 'windows-latest'
+    # ---------- Windows ------------------------------------------------------
+    - name: Install vcpkg
+      if: runner.os == 'Windows'
       run: |
         git clone https://github.com/microsoft/vcpkg.git
         .\vcpkg\bootstrap-vcpkg.bat
 
-    - name: Install packages via vcpkg (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Install packages via vcpkg
+      if: runner.os == 'Windows'
       run: |
-        .\vcpkg\vcpkg install libmodbus lua --triplet x64-windows-static
+        .\vcpkg\vcpkg install libmodbus lua pkgconf --triplet x64-windows-static
 
-    - name: Configure CMake
+    # ---------- Configure ----------------------------------------------------
+    - name: Configure (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+    - name: Configure (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
       run: >
-        cmake -B ${{ github.workspace }}/build
-        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-        -S ${{ github.workspace }}
+        cmake -S . -B build ^
+          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} ^
+          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} ^
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DCMAKE_TOOLCHAIN_FILE=${{ matrix.toolchain_file }}
 
+    # ---------- Build & test -------------------------------------------------
     - name: Build
-      run: cmake --build ${{ github.workspace }}/build --config ${{ matrix.build_type }}
+      run: cmake --build build --config ${{ matrix.build_type }}
 
     - name: Test
-      working-directory: ${{ github.workspace }}/build
+      working-directory: build
       run: ctest --build-config ${{ matrix.build_type }}
