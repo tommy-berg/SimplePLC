@@ -1,3 +1,10 @@
+/**
+ * @file device_config.cpp
+ * @brief Implementation of DeviceConfig class for managing PLC configuration
+ * 
+ * This file implements the configuration loading and access methods for
+ * the SimplePLC device, including Modbus and OPC UA server settings.
+ */
 #include "device_config.h"
 #include <fstream>
 #include <sstream>
@@ -5,12 +12,16 @@
 #include <cstdint>
 
 // Static configuration instances with default values
-static DeviceInfo device;
-static ModbusServerConfig modbus_config;
-static OpcUaServerConfig opcua_config;
-static std::vector<TagDefinition> tags;
+// These store the currently loaded configuration values
+static DeviceInfo device;                    // Device identification information
+static ModbusServerConfig modbus_config;     // Modbus server configuration 
+static OpcUaServerConfig opcua_config;       // OPC UA server configuration
+static std::vector<TagDefinition> tags;      // Tag definitions for data points
 
-// Helper function to trim whitespace
+/**
+ * Trims leading and trailing whitespace from a string
+ * @param s String to trim
+ */
 static void trim(std::string& s) {
     size_t start = s.find_first_not_of(" \t");
     size_t end = s.find_last_not_of(" \t");
@@ -37,6 +48,15 @@ static std::vector<std::string> split(const std::string& s, char delimiter) {
     return tokens;
 }
 
+/**
+ * Loads configuration from the specified INI file.
+ * Format expected:
+ * [Section]
+ * key=value
+ * 
+ * Special handling for [Tags] section where entries are in CSV format:
+ * name,address,type
+ */
 void DeviceConfig::load(const std::string& ini_file) {
     std::ifstream file(ini_file);
     if (!file) {
@@ -55,13 +75,13 @@ void DeviceConfig::load(const std::string& ini_file) {
         if (line.empty() || line[0] == '#' || line[0] == ';')
             continue;
 
-        // Process section headers
+        // Process section headers - format: [SectionName]
         if (line.front() == '[' && line.back() == ']') {
             current_section = line.substr(1, line.size() - 2);
             continue;
         }
 
-        // Process key=value pairs
+        // Process key=value pairs for configuration settings
         size_t eq = line.find('=');
         if (eq != std::string::npos) {
             std::string key = line.substr(0, eq);
@@ -138,7 +158,7 @@ void DeviceConfig::load(const std::string& ini_file) {
                 }
             }
         }
-        // Process tag definitions (without an equals sign)
+        // Process tag definitions in CSV format (name,address,type)
         else if (current_section == "Tags") {
             // Parse CSV format for tags: name,address,type
             auto parts = split(line, ',');
