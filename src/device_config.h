@@ -12,6 +12,7 @@ struct DeviceInfo {
     std::string device_id_string = "SimplePLC v0.1";  
     uint8_t slave_id = 1;
     uint8_t run_indicator = 1;
+    std::string run_script = "active.plc";  // Script to run for simulation
 };
 
 /**

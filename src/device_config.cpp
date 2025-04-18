@@ -112,6 +112,10 @@ void DeviceConfig::load(const std::string& ini_file) {
                         std::cerr << "[Config] Error parsing run_indicator: " << e.what() << std::endl;
                     }
                 }
+                else if (key == "run_script") {
+                    device.run_script = value;
+                    std::cout << "[Config] Script to run: " << value << std::endl;
+                }
             }
             else if (current_section == "ModbusServer") {
                 if (key == "listen") {

@@ -4,6 +4,7 @@
 #include <mutex>
 #include <string>
 #include "platform.h"
+#include "device_config.h"
 
 // These constants were likely part of an earlier implementation or for future use
 // Commenting out to avoid unused variable warnings
@@ -334,7 +335,17 @@ void PlcLogic::loop() {
     platform::enableRawMode();
     constexpr std::chrono::milliseconds SCAN_INTERVAL(100);
     int cycle_count = 0;
-    std::string scriptPath = "active.plc"; // Store script path
+    
+    // Get script path from config
+    std::string scriptPath = DeviceConfig::getDeviceInfo().run_script;
+    std::cout << "[PLC] Using script: " << scriptPath << std::endl;
+    
+    // Load the script initially
+    try {
+        loadScript(scriptPath);
+    } catch (const std::exception& e) {
+        std::cerr << "[PLC] Failed to load initial script: " << e.what() << std::endl;
+    }
 
     while (running) {
         // Check for space key press
