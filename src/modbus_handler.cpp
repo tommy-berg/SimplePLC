@@ -62,7 +62,11 @@ void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* r
 
         // Send the response
         if (::send(socket, reinterpret_cast<const char*>(response), total, 0) < 0) {
+#ifdef _WIN32
+            std::cerr << "[Modbus] send_report_slave_id failed: " << WSAGetLastError() << std::endl;
+#else
             std::cerr << "[Modbus] send_report_slave_id failed: " << strerror(errno) << std::endl;
+#endif
         } else {
             std::cout << "[Modbus] Sent Report Slave ID response (" << total << " bytes)" << std::endl;
         }
@@ -109,7 +113,11 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
         
         // Send the response
         if (::send(socket, reinterpret_cast<const char*>(response), 16 + len, 0) < 0) {
+#ifdef _WIN32
+            std::cerr << "[Modbus] send_read_device_id failed: " << WSAGetLastError() << std::endl;
+#else
             std::cerr << "[Modbus] send_read_device_id failed: " << strerror(errno) << std::endl;
+#endif
         } else {
             std::cout << "[Modbus] Sent Read Device ID response (" << (16 + len) << " bytes)" << std::endl;
         }

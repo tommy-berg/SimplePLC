@@ -1,17 +1,26 @@
 #include "server.h"
 #include <iostream>
 #include <thread>
-#include "platform.h"
+#include "platform.h" 
 #include "modbus_handler.h"
 #include <modbus.h>
 #include "plc_logic.h"
 #include <atomic>
 #include <fcntl.h>
+
+// Include platform-specific headers
+#ifndef _WIN32
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>  // For sockaddr_in definition
 #include <netinet/tcp.h> // For TCP_NODELAY
 #include <arpa/inet.h>   // For inet_ntop and related functions
+#else
+// Windows equivalents are already included in platform.h
+#include <io.h>  // For _dup
+#define dup _dup
+#endif
+
 #include "device_config.h"
 #include <algorithm>
 #include <vector>
@@ -39,7 +48,11 @@ ClientConnection::ClientConnection(int socket, const std::string& ip)
 ClientConnection::~ClientConnection() {
     // Close the socket if it's still open
     if (socket_ >= 0 && is_active_) {
+#ifdef _WIN32
+        closesocket(socket_);
+#else
         close(socket_);
+#endif
         socket_ = -1;
     }
 }
@@ -162,7 +175,11 @@ void ModbusServer::run_server() {
             
             if (result == -1) {
                 if (errno != EINTR) {
+#ifdef _WIN32
+                    std::cerr << "[Modbus] Select error: " << WSAGetLastError() << std::endl;
+#else
                     std::cerr << "[Modbus] Select error: " << strerror(errno) << std::endl;
+#endif
                 }
                 continue;
             }
@@ -191,7 +208,11 @@ void ModbusServer::run_server() {
                     int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &addrlen);
                     
                     if (client_socket == -1) {
+#ifdef _WIN32
+                        std::cerr << "[Modbus] Accept error: " << WSAGetLastError() << std::endl;
+#else
                         std::cerr << "[Modbus] Accept error: " << strerror(errno) << std::endl;
+#endif
                         continue;
                     }
                     
@@ -206,7 +227,11 @@ void ModbusServer::run_server() {
                     // Configure client socket
                     if (!configure_client_socket(client_socket)) {
                         std::cerr << "[Modbus] Failed to configure client socket " << client_socket << std::endl;
+#ifdef _WIN32
+                        closesocket(client_socket);
+#else
                         close(client_socket);
+#endif
                         continue;
                     }
                     
@@ -278,13 +303,21 @@ void ModbusServer::run_server() {
                         }
                     } else if (rc == -1) {
                         // Error receiving data
+#ifdef _WIN32
+                        if (WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAETIMEDOUT) {
+#else
                         if (errno != EAGAIN && errno != EWOULDBLOCK && errno != ETIMEDOUT) {
+#endif
                             // Real error, not timeout - close the connection
                             std::cout << "[Modbus] Connection closed on socket " << socket_fd 
                                      << (connection ? " from " + connection->getIp() : "") << std::endl;
                             
                             // Close the socket
+#ifdef _WIN32
+                            closesocket(socket_fd);
+#else
                             close(socket_fd);
+#endif
                             
                             // Remove from reference set
                             FD_CLR(socket_fd, &refset);
@@ -315,12 +348,20 @@ void ModbusServer::run_server() {
         std::cout << "[Modbus] Closing server socket and all client connections..." << std::endl;
         
         // Close the server socket
+        #ifdef _WIN32
+        closesocket(server_socket);
+        #else
         close(server_socket);
+        #endif
         
         // Close all client sockets
         for (int socket_fd = 0; socket_fd <= max_fd; socket_fd++) {
             if (FD_ISSET(socket_fd, &refset) && socket_fd != server_socket) {
+#ifdef _WIN32
+                closesocket(socket_fd);
+#else
                 close(socket_fd);
+#endif
             }
         }
         
@@ -336,7 +377,14 @@ void ModbusServer::run_server() {
 
 bool ModbusServer::configure_client_socket(int client_socket) {
     // Make socket blocking for synchronous I/O
-    int flags = fcntl(client_socket, F_GETFL);
+#ifdef _WIN32
+    unsigned long mode = 0;  // 0 = blocking, 1 = non-blocking
+    if (ioctlsocket(client_socket, FIONBIO, &mode) != 0) {
+        std::cerr << "[Modbus] Error setting socket to blocking mode: " << WSAGetLastError() << std::endl;
+        return false;
+    }
+#else
+    int flags = fcntl(client_socket, F_GETFL, 0);
     if (flags == -1) {
         std::cerr << "[Modbus] Error getting socket flags: " << strerror(errno) << std::endl;
         return false;
@@ -346,18 +394,31 @@ bool ModbusServer::configure_client_socket(int client_socket) {
         std::cerr << "[Modbus] Error setting socket to blocking mode: " << strerror(errno) << std::endl;
         return false;
     }
+#endif
     
     // Set TCP_NODELAY to disable Nagle's algorithm for better real-time performance
     int flag = 1;
-    if (setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int)) == -1) {
-        std::cerr << "[Modbus] Warning: Failed to set TCP_NODELAY: " << strerror(errno) << std::endl;
+    if (setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, (const char*)&flag, sizeof(int)) == -1) {
+        std::cerr << "[Modbus] Warning: Failed to set TCP_NODELAY: " 
+#ifdef _WIN32
+                  << WSAGetLastError() 
+#else
+                  << strerror(errno) 
+#endif
+                  << std::endl;
         // Non-critical, continue anyway
     }
     
     // Disable TCP lingering to ensure socket close is immediate
     struct linger linger_opt = {1, 0}; // Enable linger with 0 timeout (immediate close)
-    if (setsockopt(client_socket, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt)) == -1) {
-        std::cerr << "[Modbus] Warning: Failed to set SO_LINGER: " << strerror(errno) << std::endl;
+    if (setsockopt(client_socket, SOL_SOCKET, SO_LINGER, (const char*)&linger_opt, sizeof(linger_opt)) == -1) {
+        std::cerr << "[Modbus] Warning: Failed to set SO_LINGER: " 
+#ifdef _WIN32
+                  << WSAGetLastError() 
+#else
+                  << strerror(errno) 
+#endif
+                  << std::endl;
         // Non-critical, continue anyway
     }
     
@@ -366,20 +427,38 @@ bool ModbusServer::configure_client_socket(int client_socket) {
     timeout.tv_sec = DEFAULT_CLIENT_TIMEOUT_SEC;
     timeout.tv_usec = DEFAULT_CLIENT_TIMEOUT_USEC;
     
-    if (setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-        std::cerr << "[Modbus] Error setting socket receive timeout: " << strerror(errno) << std::endl;
+    if (setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+        std::cerr << "[Modbus] Error setting socket receive timeout: " 
+#ifdef _WIN32
+                  << WSAGetLastError() 
+#else
+                  << strerror(errno) 
+#endif
+                  << std::endl;
         return false;
     }
     
-    if (setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
-        std::cerr << "[Modbus] Error setting socket send timeout: " << strerror(errno) << std::endl;
+    if (setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+        std::cerr << "[Modbus] Error setting socket send timeout: " 
+#ifdef _WIN32
+                  << WSAGetLastError() 
+#else
+                  << strerror(errno) 
+#endif
+                  << std::endl;
         return false;
     }
     
     // Set keepalive to detect dead connections
     int keepalive = 1;
-    if (setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(int)) < 0) {
-        std::cerr << "[Modbus] Warning: Failed to set SO_KEEPALIVE: " << strerror(errno) << std::endl;
+    if (setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE, (const char*)&keepalive, sizeof(int)) < 0) {
+        std::cerr << "[Modbus] Warning: Failed to set SO_KEEPALIVE: " 
+#ifdef _WIN32
+                  << WSAGetLastError() 
+#else
+                  << strerror(errno) 
+#endif
+                  << std::endl;
         // Non-critical, continue anyway
     }
     
