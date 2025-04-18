@@ -84,10 +84,16 @@ add_executable(SimplePLC
     src/opcua_server.cpp
 )
 
+# Add compiler definitions to prevent atomic function conflicts with open62541
+target_compile_definitions(SimplePLC PRIVATE UA_ENABLE_AMALGAMATION=0)
+
 # ───────────────── Test Client ─────────────────
 add_executable(test_client
     src/test_client.cpp
 )
+
+# Add compiler definitions to prevent atomic function conflicts with open62541
+target_compile_definitions(test_client PRIVATE UA_ENABLE_AMALGAMATION=0)
 
 # On Unix-like systems, add library search paths from pkg-config
 if(NOT WIN32)
