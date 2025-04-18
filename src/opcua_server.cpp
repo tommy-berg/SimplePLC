@@ -12,7 +12,7 @@ OpcUaServer::OpcUaServer(modbus_mapping_t* mapping)
     UA_ServerConfig* server_config = UA_Server_getConfig(server);
     
     // Initialize with configuration settings
-    UA_StatusCode retval = UA_ServerConfig_setMinimal(server_config, config.port, nullptr);
+    UA_StatusCode retval = UA_ServerConfig_setMinimal(server_config, static_cast<UA_UInt16>(config.port), nullptr);
     if (retval != UA_STATUSCODE_GOOD) {
         throw std::runtime_error("Failed to set server configuration");
     }
@@ -174,7 +174,7 @@ UA_NodeId OpcUaServer::addVariable(const TagInfo& tag) {
     return nodeId;
 }
 
-void OpcUaServer::updateCallback(UA_Server* server, void* data) {
+void OpcUaServer::updateCallback(UA_Server* /* server */, void* data) {
     OpcUaServer* self = static_cast<OpcUaServer*>(data);
     if (self->running) {
         self->updateValues();

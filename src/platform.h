@@ -1,6 +1,18 @@
 #pragma once
 #include <string>
 
+// Windows-specific includes need to come first to avoid conflicts
+#ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN  // Prevent windows.h from including winsock.h
+    #include <windows.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <conio.h>
+    #pragma comment(lib, "ws2_32.lib")
+    #define STDIN_FILENO 0
+    #define close closesocket
+#endif
+
 // Include standard C headers
 #include <stdlib.h>
 #include <stdint.h>
@@ -23,19 +35,25 @@ extern "C" {
 #endif
 
 #if defined(HAS_ATOMIC_BUILTINS)
-    // Define atomic operations using compiler builtins
+    // Only define these functions if they are not already defined by Open62541
+    #ifndef UA_atomic_xchg
     static inline void* UA_atomic_xchg(void** addr, void* newValue) {
         return __atomic_exchange_n(addr, newValue, __ATOMIC_SEQ_CST);
     }
+    #endif
 
+    #ifndef UA_atomic_cmpxchg
     static inline void* UA_atomic_cmpxchg(void** addr, void* expected, void* newValue) {
         __atomic_compare_exchange_n(addr, &expected, newValue, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
         return expected;
     }
+    #endif
 
+    #ifndef UA_atomic_load
     static inline void* UA_atomic_load(void** addr) {
         return __atomic_load_n(addr, __ATOMIC_SEQ_CST);
     }
+    #endif
 #endif
 
 #ifdef __cplusplus
@@ -107,7 +125,11 @@ extern "C" {
 #define F_GETFL 0
 #define F_SETFL 1
 #define O_NONBLOCK 1
+
+// Don't redefine EINTR if it's already defined
+#ifndef EINTR
 #define EINTR WSAEINTR
+#endif
 
 // Redefine function names
 #define strerror_r(errnum, buf, buflen) strerror_s(buf, buflen, errnum)
@@ -149,19 +171,13 @@ namespace Platform {
     std::string getExecutableDir();
 }
 
-#ifdef _WIN32
-    #include <windows.h>
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #include <conio.h>
-    #pragma comment(lib, "ws2_32.lib")
-    #define STDIN_FILENO 0
-    #define close closesocket
-#else
+// Unix-specific includes
+#ifndef _WIN32
     #include <unistd.h>
     #include <termios.h>
     #include <sys/select.h>
     #include <sys/socket.h>
+    #include <fcntl.h>       // For F_GETFL, F_SETFL, etc.
 #endif
 
 // Platform-independent terminal functions
@@ -186,7 +202,7 @@ namespace platform {
         termios raw;
         tcgetattr(STDIN_FILENO, &terminal_state.original);
         raw = terminal_state.original;
-        raw.c_lflag &= ~(ICANON | ECHO);
+        raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 #endif
     }
@@ -223,7 +239,7 @@ namespace platform {
 #ifdef _WIN32
         Sleep(milliseconds);
 #else
-        usleep(milliseconds * 1000);
+        usleep(static_cast<useconds_t>(static_cast<unsigned int>(milliseconds) * 1000U));
 #endif
     }
 

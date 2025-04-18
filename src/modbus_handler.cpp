@@ -1,7 +1,7 @@
+#include "platform.h"  // Include platform.h first for platform-specific definitions
 #include "modbus_handler.h"
 #include <cstring>
 #include <iostream>
-#include "platform.h"
 #include <random>
 #include "lua_hooks.h"
 #include "device_config.h"
@@ -47,7 +47,7 @@ void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* r
         std::memcpy(response, req, 6);  // TID, PID
         response[6] = req[6];           // Unit ID
         response[7] = 0x11;             // Function code
-        response[8] = 2 + name_len;     // Length of the response
+        response[8] = static_cast<uint8_t>(2 + name_len);     // Length of the response
         response[9] = slave_id;
         response[10] = run_indicator;
         
@@ -61,7 +61,7 @@ void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* r
         int total = 6 + len;
 
         // Send the response
-        if (::send(socket, reinterpret_cast<const char*>(response), total, 0) < 0) {
+        if (::send(socket, reinterpret_cast<const char*>(response), static_cast<size_t>(total), 0) < 0) {
 #ifdef _WIN32
             std::cerr << "[Modbus] send_report_slave_id failed: " << WSAGetLastError() << std::endl;
 #else
@@ -103,16 +103,16 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
 
         // Object ID 0x00 (VendorName)
         response[14] = 0x00;
-        response[15] = len;
+        response[15] = static_cast<uint8_t>(len);
         std::memcpy(&response[16], device_info, len);
 
         // Calculate total message length
-        uint16_t data_len = (16 + len) - 6;
+        uint16_t data_len = static_cast<uint16_t>((16 + len) - 6);
         response[4] = (data_len >> 8) & 0xFF;
         response[5] = data_len & 0xFF;
         
         // Send the response
-        if (::send(socket, reinterpret_cast<const char*>(response), 16 + len, 0) < 0) {
+        if (::send(socket, reinterpret_cast<const char*>(response), static_cast<size_t>(16 + len), 0) < 0) {
 #ifdef _WIN32
             std::cerr << "[Modbus] send_read_device_id failed: " << WSAGetLastError() << std::endl;
 #else
@@ -126,7 +126,7 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
     }
 }
 
-void ModbusHandler::handle_standard_function(modbus_t* ctx, const uint8_t* query, int rc, modbus_mapping_t* mapping) {
+void ModbusHandler::handle_standard_function(modbus_t* /* ctx */, const uint8_t* query, int /* rc */, modbus_mapping_t* mapping) {
     try {
         // Make sure Lua hooks are initialized
         if (!hooks) {
@@ -157,7 +157,7 @@ void ModbusHandler::handle_standard_function(modbus_t* ctx, const uint8_t* query
             case MODBUS_FC_WRITE_SINGLE_REGISTER: {   // FC 6
                 int addr = (query[8] << 8) | query[9];
                 if (addr >= 0 && addr < mapping->nb_registers) {
-                    mapping->tab_registers[addr] = (query[10] << 8) | query[11];
+                    mapping->tab_registers[addr] = static_cast<uint16_t>((query[10] << 8) | query[11]);
                     std::cout << "[Modbus] Write register " << addr << " = " 
                               << mapping->tab_registers[addr] << std::endl;
                 } else {
@@ -195,7 +195,7 @@ void ModbusHandler::handle_standard_function(modbus_t* ctx, const uint8_t* query
                     std::cerr << "[Modbus] Address range out of bounds for write multiple registers" << std::endl;
                 } else {
                     for (int i = 0; i < count && (i * 2) < byte_count; ++i) {
-                        mapping->tab_registers[addr + i] = (query[13 + i * 2] << 8) | query[14 + i * 2];
+                        mapping->tab_registers[addr + i] = static_cast<uint16_t>((query[13 + i * 2] << 8) | query[14 + i * 2]);
                     }
                     std::cout << "[Modbus] Write " << count << " registers starting at " << addr << std::endl;
                 }
@@ -212,7 +212,7 @@ void ModbusHandler::handle_standard_function(modbus_t* ctx, const uint8_t* query
                 
             default:
                 std::cout << "[Modbus] Received unhandled function code: 0x" 
-                         << std::hex << (int)function_code << std::dec << std::endl;
+                         << std::hex << static_cast<int>(function_code) << std::dec << std::endl;
                 break;
         }
     } catch (const std::exception& e) {

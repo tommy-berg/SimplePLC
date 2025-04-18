@@ -1,17 +1,14 @@
+#include "platform.h"  // Include platform.h first for platform-specific definitions
 #include "server.h"
 #include <iostream>
 #include <thread>
-#include "platform.h" 
-#include "modbus_handler.h"
 #include <modbus.h>
+#include "modbus_handler.h"
 #include "plc_logic.h"
 #include <atomic>
-#include <fcntl.h>
 
-// Include platform-specific headers
+// Include platform-specific headers that aren't already in platform.h
 #ifndef _WIN32
-#include <unistd.h>
-#include <sys/socket.h>
 #include <netinet/in.h>  // For sockaddr_in definition
 #include <netinet/tcp.h> // For TCP_NODELAY
 #include <arpa/inet.h>   // For inet_ntop and related functions
@@ -30,7 +27,6 @@
 
 // Constants for configuration - now loaded from settings.ini
 namespace {
-    constexpr int DEFAULT_SELECT_TIMEOUT_USEC = 100000; // 100ms
     constexpr int DEFAULT_CLIENT_TIMEOUT_SEC = 1;
     constexpr int DEFAULT_CLIENT_TIMEOUT_USEC = 0;
 }
@@ -168,7 +164,7 @@ void ModbusServer::run_server() {
             // Setup timeout for select - short to allow checking server_running flag
             struct timeval timeout;
             timeout.tv_sec = 0;
-            timeout.tv_usec = 100000; // 100ms
+            timeout.tv_usec = 100000; // 100ms for responsive checking of server_running flag
             
             // Wait for activity on any socket
             int result = select(max_fd + 1, &rdset, NULL, NULL, &timeout);
@@ -205,7 +201,7 @@ void ModbusServer::run_server() {
                 if (socket_fd == server_socket) {
                     struct sockaddr_in client_addr;
                     socklen_t addrlen = sizeof(client_addr);
-                    int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &addrlen);
+                    int client_socket = accept(server_socket, reinterpret_cast<struct sockaddr*>(&client_addr), &addrlen);
                     
                     if (client_socket == -1) {
 #ifdef _WIN32
@@ -269,7 +265,7 @@ void ModbusServer::run_server() {
                         
                         uint8_t func = query[7];
                         std::cout << "[Modbus] Received function 0x" 
-                                 << std::hex << (int)func << std::dec 
+                                 << std::hex << static_cast<int>(func) << std::dec 
                                  << " (length: " << rc << " bytes)"
                                  << (connection ? " from " + connection->getIp() : "") 
                                  << std::endl;
@@ -295,7 +291,7 @@ void ModbusServer::run_server() {
                                              << modbus_strerror(errno) << std::endl;
                                 } else {
                                     std::cout << "[Modbus] Successfully sent reply for function 0x" 
-                                             << std::hex << (int)func << std::dec << std::endl;
+                                             << std::hex << static_cast<int>(func) << std::dec << std::endl;
                                 }
                             }
                         } catch (const std::exception& e) {
@@ -398,7 +394,7 @@ bool ModbusServer::configure_client_socket(int client_socket) {
     
     // Set TCP_NODELAY to disable Nagle's algorithm for better real-time performance
     int flag = 1;
-    if (setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, (const char*)&flag, sizeof(int)) == -1) {
+    if (setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(int)) == -1) {
         std::cerr << "[Modbus] Warning: Failed to set TCP_NODELAY: " 
 #ifdef _WIN32
                   << WSAGetLastError() 
@@ -411,7 +407,7 @@ bool ModbusServer::configure_client_socket(int client_socket) {
     
     // Disable TCP lingering to ensure socket close is immediate
     struct linger linger_opt = {1, 0}; // Enable linger with 0 timeout (immediate close)
-    if (setsockopt(client_socket, SOL_SOCKET, SO_LINGER, (const char*)&linger_opt, sizeof(linger_opt)) == -1) {
+    if (setsockopt(client_socket, SOL_SOCKET, SO_LINGER, reinterpret_cast<const char*>(&linger_opt), sizeof(linger_opt)) == -1) {
         std::cerr << "[Modbus] Warning: Failed to set SO_LINGER: " 
 #ifdef _WIN32
                   << WSAGetLastError() 
@@ -427,7 +423,7 @@ bool ModbusServer::configure_client_socket(int client_socket) {
     timeout.tv_sec = DEFAULT_CLIENT_TIMEOUT_SEC;
     timeout.tv_usec = DEFAULT_CLIENT_TIMEOUT_USEC;
     
-    if (setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+    if (setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout)) < 0) {
         std::cerr << "[Modbus] Error setting socket receive timeout: " 
 #ifdef _WIN32
                   << WSAGetLastError() 
@@ -438,7 +434,7 @@ bool ModbusServer::configure_client_socket(int client_socket) {
         return false;
     }
     
-    if (setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) {
+    if (setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout)) < 0) {
         std::cerr << "[Modbus] Error setting socket send timeout: " 
 #ifdef _WIN32
                   << WSAGetLastError() 
@@ -451,7 +447,7 @@ bool ModbusServer::configure_client_socket(int client_socket) {
     
     // Set keepalive to detect dead connections
     int keepalive = 1;
-    if (setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE, (const char*)&keepalive, sizeof(int)) < 0) {
+    if (setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&keepalive), sizeof(int)) < 0) {
         std::cerr << "[Modbus] Warning: Failed to set SO_KEEPALIVE: " 
 #ifdef _WIN32
                   << WSAGetLastError() 

@@ -5,11 +5,14 @@
 #include <string>
 #include "platform.h"
 
-// Constants
+// These constants were likely part of an earlier implementation or for future use
+// Commenting out to avoid unused variable warnings
+/*
 constexpr int BLINK_OUTPUT_BIT = 0;
 constexpr int ON_DURATION_MS = 1000;
 constexpr int OFF_DURATION_MS = 1000;
 constexpr std::chrono::milliseconds SCAN_TIME(100);
+*/
 
 std::atomic<bool> PlcLogic::running = false;
 std::thread PlcLogic::thread;
@@ -17,10 +20,13 @@ modbus_mapping_t* PlcLogic::mb_mapping = nullptr;
 std::timed_mutex PlcLogic::mb_mutex;
 lua_State* PlcLogic::lua_state = nullptr;
 
+// This function is not currently used - commenting out to avoid warnings
+/*
 static uint64_t now_ms() {
     using namespace std::chrono;
-    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    return static_cast<uint64_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
 }
+*/
 
 void PlcLogic::start(modbus_mapping_t* mapping) {
     if (!mapping) {
@@ -121,7 +127,8 @@ void PlcLogic::reloadScript(const std::string& scriptPath) {
 }
 
 int PlcLogic::lua_readCoil(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushnil(L);
@@ -136,7 +143,8 @@ int PlcLogic::lua_readCoil(lua_State* L) {
 }
 
 int PlcLogic::lua_writeCoil(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
     bool value = lua_toboolean(L, 2);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
@@ -153,7 +161,8 @@ int PlcLogic::lua_writeCoil(lua_State* L) {
 }
 
 int PlcLogic::lua_readDiscreteInput(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushnil(L);
@@ -168,7 +177,8 @@ int PlcLogic::lua_readDiscreteInput(lua_State* L) {
 }
 
 int PlcLogic::lua_readHoldingRegister(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushnil(L);
@@ -183,15 +193,17 @@ int PlcLogic::lua_readHoldingRegister(lua_State* L) {
 }
 
 int PlcLogic::lua_writeHoldingRegister(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
-    int value = luaL_checkinteger(L, 2);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
+    lua_Integer value_val = luaL_checkinteger(L, 2);
+    int value = static_cast<int>(value_val);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushboolean(L, false);
         return 1;
     }
     if (addr >= 0 && addr < mb_mapping->nb_registers) {
-        mb_mapping->tab_registers[addr] = value;
+        mb_mapping->tab_registers[addr] = static_cast<uint16_t>(value);
         lua_pushboolean(L, true);
     } else {
         lua_pushboolean(L, false);
@@ -228,7 +240,8 @@ int PlcLogic::lua_print(lua_State* L) {
 }
 
 int PlcLogic::lua_readInputRegister(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushnil(L);
@@ -243,15 +256,17 @@ int PlcLogic::lua_readInputRegister(lua_State* L) {
 }
 
 int PlcLogic::lua_writeInputRegister(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
-    int value = luaL_checkinteger(L, 2);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
+    lua_Integer value_val = luaL_checkinteger(L, 2);
+    int value = static_cast<int>(value_val);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
         lua_pushboolean(L, false);
         return 1;
     }
     if (addr >= 0 && addr < mb_mapping->nb_input_registers) {
-        mb_mapping->tab_input_registers[addr] = value;
+        mb_mapping->tab_input_registers[addr] = static_cast<uint16_t>(value);
         lua_pushboolean(L, true);
     } else {
         lua_pushboolean(L, false);
@@ -260,7 +275,8 @@ int PlcLogic::lua_writeInputRegister(lua_State* L) {
 }
 
 int PlcLogic::lua_writeDiscreteInput(lua_State* L) {
-    int addr = luaL_checkinteger(L, 1);
+    lua_Integer addr_val = luaL_checkinteger(L, 1);
+    int addr = static_cast<int>(addr_val);
     bool value = lua_toboolean(L, 2);
     std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
     if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
@@ -316,15 +332,15 @@ void PlcLogic::loop() {
     std::cout << "[PLC] Press SPACE to reload the script" << std::endl;
     
     platform::enableRawMode();
-    constexpr std::chrono::milliseconds SCAN_TIME(100);
+    constexpr std::chrono::milliseconds SCAN_INTERVAL(100);
     int cycle_count = 0;
-    std::string scriptPath = "plc_logic.lua"; // Store script path
+    std::string scriptPath = "active.plc"; // Store script path
 
     while (running) {
         // Check for space key press
         if (platform::kbhit()) {
-            char c = platform::getch();
-            if (c == ' ') {
+            int key_pressed = platform::getch();
+            if (key_pressed == ' ') {
                 reloadScript(scriptPath);
             }
         }
@@ -336,7 +352,7 @@ void PlcLogic::loop() {
             std::unique_lock<std::timed_mutex> lock(mb_mutex, std::defer_lock);
             if (!lock.try_lock_for(std::chrono::milliseconds(1000))) {
                 std::cerr << "[PLC] Failed to acquire mutex in cycle " << cycle_count << std::endl;
-                std::this_thread::sleep_for(SCAN_TIME);
+                std::this_thread::sleep_for(SCAN_INTERVAL);
                 continue;
             }
             
@@ -368,7 +384,7 @@ void PlcLogic::loop() {
         }
         
         cycle_count++;
-        std::this_thread::sleep_for(SCAN_TIME);
+        std::this_thread::sleep_for(SCAN_INTERVAL);
     }
 
     std::cout << "[PLC] Logic thread stopped after " << cycle_count << " cycles.\n";

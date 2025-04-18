@@ -4,6 +4,17 @@ project(SimplePLC LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Add strict compiler flags for better error detection
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -pedantic")
+    
+    # Add additional warnings that help catch common errors
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wshadow -Wconversion -Wunreachable-code")
+    
+    # Specifically for macOS/Linux compatibility issues
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wundef -Wold-style-cast")
+endif()
+
 # ───────────── Lua (works on all platforms) ─────────────
 find_package(Lua REQUIRED)  # built-in module
 

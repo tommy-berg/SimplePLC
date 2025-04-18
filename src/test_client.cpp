@@ -40,11 +40,11 @@ int main() {
                 
                 if(status == UA_STATUSCODE_GOOD) {
                     if(UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
-                        bool val = *(UA_Boolean*)value.data;
+                        bool val = *reinterpret_cast<UA_Boolean*>(value.data);
                         std::cout << "  Value (boolean): " << (val ? "true" : "false") << std::endl;
                     }
                     else if(UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_UINT16])) {
-                        uint16_t val = *(UA_UInt16*)value.data;
+                        uint16_t val = *reinterpret_cast<UA_UInt16*>(value.data);
                         std::cout << "  Value (uint16): " << val << std::endl;
                     }
                 }

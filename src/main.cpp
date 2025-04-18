@@ -1,4 +1,4 @@
-#include "platform.h"  // Include platform.h first for atomic operations
+#include "platform.h"
 #include "server.h"
 #include "device_config.h"
 #include "opcua_server.h"
