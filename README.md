@@ -82,12 +82,12 @@ Connect to the PLC using standard Modbus clients (like mbpoll) or OPC UA clients
 #### Linux
 ```sudo apt install libmodbus```\
 ```sudo apt install lua```\
-```sudo apt install libmodbus```\
+```sudo apt install open62541```
 
 #### MacOS
 
 ```brew install libmodbus```\
-```brew install lua```
+```brew install lua```\
 ```brew install open62541```
 
 ### Installing

@@ -1,4 +1,4 @@
-name: Windows-and-Linux-build
+name: Build SimplePLC
 
 on:
   push:
@@ -55,7 +55,8 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y build-essential clang pkg-config cmake \
-                             libmodbus-dev liblua5.3-dev zip musl musl-tools
+                             libmodbus-dev liblua5.3-dev zip musl musl-tools \
+                             open62541
 
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
@@ -74,7 +75,7 @@ jobs:
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
       run: |
-        .\vcpkg\vcpkg install libmodbus lua pkgconf --triplet ${{ matrix.triplet }}
+        .\vcpkg\vcpkg install libmodbus lua open62541 pkgconf --triplet ${{ matrix.triplet }}
 
     # -----------------------------------------------------------------------
     # 4 Configure
