@@ -34,8 +34,9 @@ extern "C" {
     #define HAS_ATOMIC_BUILTINS 1
 #endif
 
-#if defined(HAS_ATOMIC_BUILTINS)
-    // Only define these functions if they are not already defined by Open62541
+// Only include our implementation if open62541 hasn't already defined these
+#if defined(HAS_ATOMIC_BUILTINS) && !defined(OPEN62541_H_)
+    // Ensure we don't redefine functions provided by open62541
     #ifndef UA_atomic_xchg
     static inline void* UA_atomic_xchg(void** addr, void* newValue) {
         return __atomic_exchange_n(addr, newValue, __ATOMIC_SEQ_CST);
