@@ -35,7 +35,8 @@ extern "C" {
 #endif
 
 // Only include our implementation if open62541 hasn't already defined these
-#if defined(HAS_ATOMIC_BUILTINS) && !defined(OPEN62541_H_)
+// Check multiple possible identifiers that might be defined by Open62541
+#if defined(HAS_ATOMIC_BUILTINS) && !defined(OPEN62541_H_) && !defined(UA_ARCHITECTURE_H_) && !defined(UA_ARCHITECTURE_POSIX_H_) && !defined(UA_ARCHITECTURE_BASE_H_)
     // Ensure we don't redefine functions provided by open62541
     #ifndef UA_atomic_xchg
     static inline void* UA_atomic_xchg(void** addr, void* newValue) {
