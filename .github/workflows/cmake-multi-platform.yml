@@ -57,16 +57,8 @@ jobs:
         sudo apt install -y build-essential clang pkg-config cmake \
                              libmodbus-dev liblua5.3-dev zip musl musl-tools \
                              libxml2-dev 
-        
-        # Build open62541 from source
-        git clone https://github.com/open62541/open62541.git
-        cd open62541
-        mkdir build && cd build
-        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUA_NAMESPACE_ZERO=FULL ..
-        make -j$(nproc)
-        sudo make install
-        cd ../..
-
+        sudo apt install -y libopen62541-dev
+  
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
     # -----------------------------------------------------------------------
@@ -102,8 +94,6 @@ jobs:
       if: runner.os == 'Linux' && matrix.compiler == 'musl'
       run: |
         export CC=musl-gcc
-        # Make sure open62541 is found
-        export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
         cmake -S . -B build \
           -DCMAKE_C_COMPILER=musl-gcc \
           -DCMAKE_CXX_COMPILER=g++ \

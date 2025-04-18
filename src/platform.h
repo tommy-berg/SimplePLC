@@ -20,7 +20,46 @@
 // Include atomic headers
 #include <atomic>
 
-// We're not defining our own atomic operations as they're provided by open62541
+// Define compatibility layer for Open62541 atomic operations if needed
+#ifndef UA_ATOMIC_OPERATIONS_DEFINED
+#define UA_ATOMIC_OPERATIONS_DEFINED
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Only define these functions if SIMPLEPLC_DEFINE_ATOMIC_FUNCTIONS macro is defined
+// This way, we can explicitly control when these functions are available
+#if defined(SIMPLEPLC_DEFINE_ATOMIC_FUNCTIONS)
+
+#if defined(__GNUC__) || defined(__clang__)
+    static inline void* UA_atomic_xchg(void** addr, void* newValue) {
+        return __atomic_exchange_n(addr, newValue, __ATOMIC_SEQ_CST);
+    }
+
+    static inline void* UA_atomic_cmpxchg(void** addr, void* expected, void* newValue) {
+        __atomic_compare_exchange_n(addr, &expected, newValue, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+        return expected;
+    }
+
+    static inline void* UA_atomic_load(void** addr) {
+        return __atomic_load_n(addr, __ATOMIC_SEQ_CST);
+    }
+#endif
+
+#else
+// Forward declarations - these will be provided by Open62541
+// when we're linking with that library
+extern void* UA_atomic_xchg(void** addr, void* newValue);
+extern void* UA_atomic_cmpxchg(void** addr, void* expected, void* newValue);
+extern void* UA_atomic_load(void** addr);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* UA_ATOMIC_OPERATIONS_DEFINED */
 
 // Windows-specific defines
 #ifdef _WIN32

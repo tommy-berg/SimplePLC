@@ -24,6 +24,8 @@
 #include <mutex>
 #include <sstream>
 #include <iomanip>
+#include <cerrno>
+#include <cstring>
 
 // Constants for configuration - now loaded from settings.ini
 namespace {
