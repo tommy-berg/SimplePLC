@@ -55,7 +55,9 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y build-essential clang pkg-config cmake \
-                             libmodbus-dev liblua5.3-dev zip musl musl-tools
+                             libmodbus-dev liblua5.3-dev zip musl musl-tools \
+                             libxml2-dev 
+        sudo apt install -y libopen62541-dev
   
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
@@ -74,7 +76,7 @@ jobs:
     - name: Install packages via vcpkg
       if: runner.os == 'Windows'
       run: |
-        .\vcpkg\vcpkg install libmodbus lua pkgconf --triplet ${{ matrix.triplet }}
+        .\vcpkg\vcpkg install libmodbus lua pkgconf open62541 --triplet ${{ matrix.triplet }}
 
     # -----------------------------------------------------------------------
     # 4 Configure

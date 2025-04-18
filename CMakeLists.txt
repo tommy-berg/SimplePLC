@@ -45,78 +45,28 @@ else()
 endif()
 
 # ────────────── open62541 (OPC UA) ──────────────
-include(FetchContent)
-FetchContent_Declare(
-    open62541
-    GIT_REPOSITORY https://github.com/open62541/open62541.git
-    GIT_TAG v1.4.11
-)
+if(WIN32)
+    find_package(open62541 CONFIG REQUIRED)
+else()
+    # Prefer CMake CONFIG if available (e.g. on macOS via Homebrew)
+    find_package(open62541 CONFIG QUIET)
 
-# Configure open62541 options before making it available
-set(UA_ENABLE_AMALGAMATION ON CACHE BOOL "Compile open62541 as single file")
-set(UA_ENABLE_SUBSCRIPTIONS ON CACHE BOOL "Enable subscriptions")
-set(UA_NAMESPACE_ZERO FULL CACHE STRING "Namespace zero nodeset")
+    if(NOT TARGET open62541::open62541)
+        # fallback to manual import if needed
+        find_path(OPEN62541_INCLUDE_DIR open62541/server.h)
+        find_library(OPEN62541_LIBRARY NAMES open62541)
 
-# Make open62541 available
-FetchContent_MakeAvailable(open62541)
+        if(NOT OPEN62541_INCLUDE_DIR OR NOT OPEN62541_LIBRARY)
+            message(FATAL_ERROR "open62541 not found. Please install it via Homebrew, APT, or manually.")
+        endif()
 
-# Create directories for header files
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/open62541
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/open62541/plugin
-)
-
-# Simpler approach - copy the amalgamated header to both locations
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E copy 
-        ${open62541_BINARY_DIR}/open62541.h
-        ${CMAKE_BINARY_DIR}/include/
-)
-
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E copy 
-        ${open62541_BINARY_DIR}/open62541.h
-        ${CMAKE_BINARY_DIR}/include/open62541/
-)
-
-# Create simple pass-through headers that include the local copy
-file(WRITE ${CMAKE_BINARY_DIR}/include/open62541/server.h 
-    "#include \"open62541.h\"\n")
-
-file(WRITE ${CMAKE_BINARY_DIR}/include/open62541/server_config_default.h 
-    "#include \"open62541.h\"\n")
-
-file(WRITE ${CMAKE_BINARY_DIR}/include/open62541/client_config_default.h 
-    "#include \"open62541.h\"\n")
-
-file(WRITE ${CMAKE_BINARY_DIR}/include/open62541/client_highlevel.h 
-    "#include \"open62541.h\"\n")
-
-file(WRITE ${CMAKE_BINARY_DIR}/include/open62541/plugin/log_stdout.h 
-    "#include \"../open62541.h\"\n")
-
-# Also create a target to ensure headers are created at build time
-add_custom_target(open62541_headers ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/open62541
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/open62541/plugin
-    COMMAND ${CMAKE_COMMAND} -E copy 
-        ${open62541_BINARY_DIR}/open62541.h
-        ${CMAKE_BINARY_DIR}/include/
-    COMMAND ${CMAKE_COMMAND} -E copy 
-        ${open62541_BINARY_DIR}/open62541.h
-        ${CMAKE_BINARY_DIR}/include/open62541/
-    # Create header wrappers at build time too
-    COMMAND ${CMAKE_COMMAND} -E echo "#include \"open62541.h\"" > ${CMAKE_BINARY_DIR}/include/open62541/server.h
-    COMMAND ${CMAKE_COMMAND} -E echo "#include \"open62541.h\"" > ${CMAKE_BINARY_DIR}/include/open62541/server_config_default.h
-    COMMAND ${CMAKE_COMMAND} -E echo "#include \"open62541.h\"" > ${CMAKE_BINARY_DIR}/include/open62541/client_config_default.h
-    COMMAND ${CMAKE_COMMAND} -E echo "#include \"open62541.h\"" > ${CMAKE_BINARY_DIR}/include/open62541/client_highlevel.h
-    COMMAND ${CMAKE_COMMAND} -E echo "#include \"../open62541.h\"" > ${CMAKE_BINARY_DIR}/include/open62541/plugin/log_stdout.h
-    COMMENT "Copying open62541 headers to match include pattern"
-    DEPENDS open62541
-)
-
-# Set include paths explicitly for all targets
-include_directories(BEFORE ${CMAKE_BINARY_DIR}/include)
+        add_library(open62541::open62541 INTERFACE IMPORTED)
+        set_target_properties(open62541::open62541 PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${OPEN62541_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES      "${OPEN62541_LIBRARY}"
+        )
+    endif()
+endif()
 
 # Define control macro for atomic functions - this ensures we don't define 
 # them when using Open62541 which provides its own implementations
@@ -133,25 +83,11 @@ add_executable(SimplePLC
     src/plc_logic.cpp
     src/opcua_server.cpp
 )
-add_dependencies(SimplePLC open62541 open62541_headers)
-target_include_directories(SimplePLC PRIVATE ${CMAKE_BINARY_DIR}/include)
-
-# Disable warnings for open62541 old-style casts
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(SimplePLC PRIVATE "-Wno-old-style-cast")
-endif()
 
 # ───────────────── Test Client ─────────────────
 add_executable(test_client
     src/test_client.cpp
 )
-add_dependencies(test_client open62541 open62541_headers)
-target_include_directories(test_client PRIVATE ${CMAKE_BINARY_DIR}/include)
-
-# Disable warnings for open62541 old-style casts
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(test_client PRIVATE "-Wno-old-style-cast")
-endif()
 
 # On Unix-like systems, add library search paths from pkg-config
 if(NOT WIN32)
@@ -166,11 +102,11 @@ endif()
 target_link_libraries(SimplePLC PRIVATE
     libmodbus::libmodbus
     lua::lua
-    open62541
+    open62541::open62541
 )
 
 target_link_libraries(test_client PRIVATE
-    open62541
+    open62541::open62541
 )
 
 # Copy script files to build directory
