@@ -53,12 +53,20 @@ jobs:
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
-        sudo add-apt-repository ppa:open62541-team/ppa
         sudo apt update
         sudo apt install -y build-essential clang pkg-config cmake \
                              libmodbus-dev liblua5.3-dev zip musl musl-tools \
-                             libopen62541-1-dev
 
+    - name: Build open62541 from source
+      if: runner.os == 'Linux'
+      run: |
+        git clone https://github.com/open62541/open62541.git
+        cd open62541
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DUA_NAMESPACE_ZERO=FULL
+        make -j$(nproc)
+        sudo make install
+  
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
     # -----------------------------------------------------------------------
