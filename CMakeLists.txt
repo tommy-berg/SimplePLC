@@ -68,6 +68,11 @@ else()
     endif()
 endif()
 
+# Define control macro for atomic functions - this ensures we don't define 
+# them when using Open62541 which provides its own implementations
+# SIMPLEPLC_DEFINE_ATOMIC_FUNCTIONS is now explicitly NOT defined
+# Add any other OPC UA-specific compiler definitions here
+
 # ───────────────── Main Executable ─────────────────
 add_executable(SimplePLC
     src/main.cpp

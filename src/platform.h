@@ -28,34 +28,31 @@
 extern "C" {
 #endif
 
-// Check if we need to provide custom atomic operations
-#if defined(__GNUC__) || defined(__clang__)
-    // GCC and Clang have atomic builtins
-    #define HAS_ATOMIC_BUILTINS 1
-#endif
+// Only define these functions if SIMPLEPLC_DEFINE_ATOMIC_FUNCTIONS macro is defined
+// This way, we can explicitly control when these functions are available
+#if defined(SIMPLEPLC_DEFINE_ATOMIC_FUNCTIONS)
 
-// Only include our implementation if open62541 hasn't already defined these
-// Check multiple possible identifiers that might be defined by Open62541
-#if defined(HAS_ATOMIC_BUILTINS) && !defined(OPEN62541_H_) && !defined(UA_ARCHITECTURE_H_) && !defined(UA_ARCHITECTURE_POSIX_H_) && !defined(UA_ARCHITECTURE_BASE_H_)
-    // Ensure we don't redefine functions provided by open62541
-    #ifndef UA_atomic_xchg
+#if defined(__GNUC__) || defined(__clang__)
     static inline void* UA_atomic_xchg(void** addr, void* newValue) {
         return __atomic_exchange_n(addr, newValue, __ATOMIC_SEQ_CST);
     }
-    #endif
 
-    #ifndef UA_atomic_cmpxchg
     static inline void* UA_atomic_cmpxchg(void** addr, void* expected, void* newValue) {
         __atomic_compare_exchange_n(addr, &expected, newValue, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
         return expected;
     }
-    #endif
 
-    #ifndef UA_atomic_load
     static inline void* UA_atomic_load(void** addr) {
         return __atomic_load_n(addr, __ATOMIC_SEQ_CST);
     }
-    #endif
+#endif
+
+#else
+// Forward declarations - these will be provided by Open62541
+// when we're linking with that library
+extern void* UA_atomic_xchg(void** addr, void* newValue);
+extern void* UA_atomic_cmpxchg(void** addr, void* expected, void* newValue);
+extern void* UA_atomic_load(void** addr);
 #endif
 
 #ifdef __cplusplus

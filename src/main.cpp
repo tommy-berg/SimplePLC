@@ -1,7 +1,7 @@
-#include "platform.h"
 #include "server.h"
 #include "device_config.h"
 #include "opcua_server.h"
+#include "platform.h"
 #include <iostream>
 #include <memory>
 #include <thread>
