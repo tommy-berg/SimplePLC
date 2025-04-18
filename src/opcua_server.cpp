@@ -135,7 +135,7 @@ UA_NodeId OpcUaServer::addVariable(const TagInfo& tag) {
     
     attr.displayName = UA_LOCALIZEDTEXT(locale, name);
     // Set to read and events for subscriptions
-    attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_STATUSWRITE;
+    attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE | UA_ACCESSLEVELMASK_STATUSWRITE;
     // Enable value callbacks
     attr.valueRank = UA_VALUERANK_SCALAR;
     // Set minimum sampling interval to 100ms
@@ -158,15 +158,26 @@ UA_NodeId OpcUaServer::addVariable(const TagInfo& tag) {
     nodeId.namespaceIndex = 1;
     nodeId.identifier.string = UA_String_fromChars(name);
 
+    UA_QualifiedName qualifiedName = UA_QUALIFIEDNAME(1, name);
+    
     UA_Server_addVariableNode(server, nodeId,
                             UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
                             UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
-                            UA_QUALIFIEDNAME(1, name),
+                            qualifiedName,
                             UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
                             attr, NULL, NULL);
     
-    // Note: The ValueBackend approach isn't compatible with this version of open62541
-    // We're keeping the other subscription enhancements (accessLevel, minimumSamplingInterval)
+    // Register write value callback for the node
+    // Only allow writing to coils and holding registers
+    if (tag.type == TagInfo::Type::Coil || tag.type == TagInfo::Type::HoldingRegister) {
+        UA_ValueCallback callback;
+        callback.onRead = NULL; // We handle reads through updateCallback
+        callback.onWrite = writeVariableCallback;
+        UA_Server_setVariableNode_valueCallback(server, nodeId, callback);
+        
+        // Set the node context to this OpcUaServer instance
+        UA_Server_setNodeContext(server, nodeId, this);
+    }
     
     free(name);
     free(locale);
@@ -187,7 +198,7 @@ void OpcUaServer::updateValues() {
     
     // Print debug info every 10 updates (approximately every second)
     if (++update_counter % 10 == 0) {
-        std::cout << "[OPC UA] Updating tag values (update #" << update_counter << ")" << std::endl;
+        //std::cout << "[OPC UA] Updating tag values (update #" << update_counter << ")" << std::endl;
     }
     
     for (const auto& tag : tags) {
@@ -206,40 +217,28 @@ void OpcUaServer::updateValues() {
                 UA_Boolean boolValue = mb_mapping->tab_bits[tag.second.modbusAddress];
                 UA_Variant_setScalar(&value, &boolValue, &UA_TYPES[UA_TYPES_BOOLEAN]);
                 
-                // Debug output for value changes
-                if (update_counter % 10 == 0) {
-                    std::cout << "[OPC UA] Tag " << tag.first << " (Coil): " << (boolValue ? "TRUE" : "FALSE") << std::endl;
-                }
+
                 break;
             }
             case TagInfo::Type::DiscreteInput: {
                 UA_Boolean boolValue = mb_mapping->tab_input_bits[tag.second.modbusAddress];
                 UA_Variant_setScalar(&value, &boolValue, &UA_TYPES[UA_TYPES_BOOLEAN]);
                 
-                // Debug output for value changes
-                if (update_counter % 10 == 0) {
-                    std::cout << "[OPC UA] Tag " << tag.first << " (DiscreteInput): " << (boolValue ? "TRUE" : "FALSE") << std::endl;
-                }
+
                 break;
             }
             case TagInfo::Type::HoldingRegister: {
                 UA_UInt16 intValue = mb_mapping->tab_registers[tag.second.modbusAddress];
                 UA_Variant_setScalar(&value, &intValue, &UA_TYPES[UA_TYPES_UINT16]);
                 
-                // Debug output for value changes
-                if (update_counter % 10 == 0) {
-                    std::cout << "[OPC UA] Tag " << tag.first << " (HoldingRegister): " << intValue << std::endl;
-                }
+
                 break;
             }
             case TagInfo::Type::InputRegister: {
                 UA_UInt16 intValue = mb_mapping->tab_input_registers[tag.second.modbusAddress];
                 UA_Variant_setScalar(&value, &intValue, &UA_TYPES[UA_TYPES_UINT16]);
                 
-                // Debug output for value changes
-                if (update_counter % 10 == 0) {
-                    std::cout << "[OPC UA] Tag " << tag.first << " (InputRegister): " << intValue << std::endl;
-                }
+
                 break;
             }
         }
@@ -248,4 +247,84 @@ void OpcUaServer::updateValues() {
         UA_NodeId_clear(&nodeId);
         free(name);
     }
+}
+
+void OpcUaServer::writeVariableCallback(UA_Server * /* server */,
+                                     const UA_NodeId * /* sessionId */, void * /* sessionContext */,
+                                     const UA_NodeId *nodeId, void *nodeContext,
+                                     const UA_NumericRange * /* range */, const UA_DataValue *data) {
+    
+    OpcUaServer* self = static_cast<OpcUaServer*>(nodeContext);
+    if (!self || !self->mb_mapping) {
+        return; // Error: bad internal state
+    }
+    
+    // Find the tag by node ID
+    TagInfo* tag = self->findTagByNodeId(nodeId);
+    if (!tag) {
+        return; // Error: node ID not valid
+    }
+    
+    // Make sure we have a valid value
+    if (!data || !data->hasValue || UA_Variant_isEmpty(&data->value)) {
+        return; // Error: type mismatch
+    }
+    
+    // Handle based on tag type
+    switch (tag->type) {
+        case TagInfo::Type::Coil: {
+            // Only allow writing to coils (output bits)
+            if (data->value.type == &UA_TYPES[UA_TYPES_BOOLEAN]) {
+                UA_Boolean value = *static_cast<UA_Boolean*>(data->value.data);
+                self->mb_mapping->tab_bits[tag->modbusAddress] = value;
+                //std::cout << "[OPC UA] Client wrote " << (value ? "TRUE" : "FALSE") 
+                //          << " to coil: " << tag->name << std::endl;
+            }
+            break;
+        }
+        
+        case TagInfo::Type::HoldingRegister: {
+            // Only allow writing to holding registers
+            if (data->value.type == &UA_TYPES[UA_TYPES_UINT16]) {
+                UA_UInt16 value = *static_cast<UA_UInt16*>(data->value.data);
+                self->mb_mapping->tab_registers[tag->modbusAddress] = value;
+                //std::cout << "[OPC UA] Client wrote " << value 
+                //          << " to holding register: " << tag->name << std::endl;
+            }
+            break;
+        }
+        
+        case TagInfo::Type::DiscreteInput:
+        case TagInfo::Type::InputRegister:
+            // These are input-only, can't be written to
+            //std::cout << "[OPC UA] Client attempted to write to read-only tag: " << tag->name << std::endl;
+            break;
+            
+        default:
+            break;
+    }
+}
+
+TagInfo* OpcUaServer::findTagByNodeId(const UA_NodeId* nodeId) {
+    if (nodeId->identifierType != UA_NODEIDTYPE_STRING || nodeId->namespaceIndex != 1) {
+        return nullptr;
+    }
+    
+    char* nodeName = static_cast<char*>(UA_malloc(nodeId->identifier.string.length + 1));
+    if (!nodeName) {
+        return nullptr;
+    }
+    
+    memcpy(nodeName, nodeId->identifier.string.data, nodeId->identifier.string.length);
+    nodeName[nodeId->identifier.string.length] = '\0';
+    
+    std::string tagName(nodeName);
+    UA_free(nodeName);
+    
+    auto it = tags.find(tagName);
+    if (it != tags.end()) {
+        return &(it->second);
+    }
+    
+    return nullptr;
 } 

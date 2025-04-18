@@ -42,4 +42,13 @@ private:
     static void updateCallback(UA_Server* server, void* data);
     void updateValues();
     void runEventLoop();
+    
+    // Value callback for handling writes - must match void return type required by UA_ValueCallback
+    static void writeVariableCallback(UA_Server *server,
+                                     const UA_NodeId *sessionId, void *sessionContext,
+                                     const UA_NodeId *nodeId, void *nodeContext,
+                                     const UA_NumericRange *range, const UA_DataValue *data);
+    
+    // Helper method to find tag by node ID
+    TagInfo* findTagByNodeId(const UA_NodeId* nodeId);
 }; 
