@@ -10,7 +10,6 @@
     #include <conio.h>
     #pragma comment(lib, "ws2_32.lib")
     #define STDIN_FILENO 0
-    #define close closesocket
 #endif
 
 // Include standard C headers
@@ -47,12 +46,6 @@ extern "C" {
     }
 #endif
 
-#else
-// Forward declarations - these will be provided by Open62541
-// when we're linking with that library
-extern void* UA_atomic_xchg(void** addr, void* newValue);
-extern void* UA_atomic_cmpxchg(void** addr, void* expected, void* newValue);
-extern void* UA_atomic_load(void** addr);
 #endif
 
 #ifdef __cplusplus

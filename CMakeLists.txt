@@ -105,6 +105,11 @@ target_link_libraries(SimplePLC PRIVATE
     open62541::open62541
 )
 
+# Add a definition to explicitly tell platform.h that we're using Open62541's atomic functions
+target_compile_definitions(SimplePLC PRIVATE
+    UA_ATOMIC_OPERATIONS_DEFINED=1
+)
+
 target_link_libraries(test_client PRIVATE
     open62541::open62541
 )

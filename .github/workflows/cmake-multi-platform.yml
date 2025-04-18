@@ -1,4 +1,4 @@
-name: Build SimplePLC
+name: Multi Platform Build
 
 on:
   push:
@@ -57,7 +57,13 @@ jobs:
         sudo apt install -y build-essential clang pkg-config cmake \
                              libmodbus-dev liblua5.3-dev zip musl musl-tools \
                              libxml2-dev 
-        sudo apt install -y libopen62541-dev
+        git clone https://github.com/open62541/open62541.git
+        cd open62541
+        mkdir build && cd build
+        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUA_NAMESPACE_ZERO=FULL ..
+        make -j$(nproc)
+        sudo make install
+        cd ../..
   
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)

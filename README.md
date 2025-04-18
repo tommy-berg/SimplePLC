@@ -104,7 +104,7 @@ Program requires two files to start:
 
 ```settings.ini``` - Device configuration\
 ```active.plc``` - PLC control loop\
-```world.plc``` (Optional) - Override registers with simulated or external values
+```world.plc``` (Optional) - Simulation configuration
 
 Run ```./SimplePLC```  from the same folder where the above mentioned files exist.
 
@@ -173,3 +173,7 @@ Write Operations:
 
 ## Acknowledgements
 Thanks to FactoryIO for providing a trail license for their software.
+
+Open Source OPC UA from https://www.open62541.org
+
+The great libmodbus project https://libmodbus.org

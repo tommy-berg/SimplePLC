@@ -56,8 +56,8 @@ void ModbusHandler::send_report_slave_id(int socket, modbus_t*, const uint8_t* r
 
         // Calculate total message length
         uint16_t len = 3 + response[8];
-        response[4] = (len >> 8) & 0xFF;
-        response[5] = len & 0xFF;
+        response[4] = static_cast<uint8_t>((len >> 8) & 0xFF);
+        response[5] = static_cast<uint8_t>(len & 0xFF);
         int total = 6 + len;
 
         // Send the response
@@ -108,8 +108,8 @@ void ModbusHandler::send_read_device_id(int socket, modbus_t*, const uint8_t* re
 
         // Calculate total message length
         uint16_t data_len = static_cast<uint16_t>((16 + len) - 6);
-        response[4] = (data_len >> 8) & 0xFF;
-        response[5] = data_len & 0xFF;
+        response[4] = static_cast<uint8_t>((data_len >> 8) & 0xFF);
+        response[5] = static_cast<uint8_t>(data_len & 0xFF);
         
         // Send the response
         if (::send(socket, reinterpret_cast<const char*>(response), static_cast<size_t>(16 + len), 0) < 0) {
