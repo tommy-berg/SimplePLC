@@ -53,10 +53,11 @@ jobs:
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
+        sudo add-apt-repository ppa:open62541-team/ppa
         sudo apt update
         sudo apt install -y build-essential clang pkg-config cmake \
                              libmodbus-dev liblua5.3-dev zip musl musl-tools \
-                             open62541
+                             libopen62541-1-dev
 
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
