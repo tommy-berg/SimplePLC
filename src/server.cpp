@@ -266,11 +266,11 @@ void ModbusServer::run_server() {
                         }
                         
                         uint8_t func = query[7];
-                        std::cout << "[Modbus] Received function 0x" 
-                                 << std::hex << static_cast<int>(func) << std::dec 
-                                 << " (length: " << rc << " bytes)"
-                                 << (connection ? " from " + connection->getIp() : "") 
-                                 << std::endl;
+                        //std::cout << "[Modbus] Received function 0x" 
+                        //         << std::hex << static_cast<int>(func) << std::dec 
+                        //         << " (length: " << rc << " bytes)"
+                        //         << (connection ? " from " + connection->getIp() : "") 
+                        //         << std::endl;
                         
                         try {
                             // Lock the mapping for thread safety during reply
@@ -292,8 +292,8 @@ void ModbusServer::run_server() {
                                     std::cerr << "[Modbus] Error in modbus_reply: " 
                                              << modbus_strerror(errno) << std::endl;
                                 } else {
-                                    std::cout << "[Modbus] Successfully sent reply for function 0x" 
-                                             << std::hex << static_cast<int>(func) << std::dec << std::endl;
+                                    //std::cout << "[Modbus] Successfully sent reply for function 0x" 
+                                    //         << std::hex << static_cast<int>(func) << std::dec << std::endl;
                                 }
                             }
                         } catch (const std::exception& e) {

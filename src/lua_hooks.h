@@ -14,7 +14,7 @@ public:
     void update_all_registers(modbus_mapping_t* mapping);
     
     // Start periodic update thread
-    void start_periodic_updates(modbus_mapping_t* mapping, int update_ms = 100);
+    void start_periodic_updates(modbus_mapping_t* mapping, int update_ms = 25);
 
 private:
     lua_State* L;
