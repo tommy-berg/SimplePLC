@@ -89,12 +89,36 @@ add_executable(test_client
     src/test_client.cpp
 )
 
+# ───────────────── Modbus Response Time Benchmark ─────────────────
+add_executable(test_modbus_responsetime
+    src/test_modbus_responsetime.cpp
+)
+
+# Add server check utility
+add_executable(check_modbus_server
+    src/check_modbus_server.cpp
+)
+
+# Add maximum connections benchmark
+add_executable(test_modbus_maxconn
+    src/test_modbus_maxconn.cpp
+)
+
 # On Unix-like systems, add library search paths from pkg-config
 if(NOT WIN32)
     target_link_directories(SimplePLC PRIVATE
         ${LIBMODBUS_LIBRARY_DIRS}
     )
     target_link_directories(test_client PRIVATE
+        ${LIBMODBUS_LIBRARY_DIRS}
+    )
+    target_link_directories(test_modbus_responsetime PRIVATE
+        ${LIBMODBUS_LIBRARY_DIRS}
+    )
+    target_link_directories(check_modbus_server PRIVATE
+        ${LIBMODBUS_LIBRARY_DIRS}
+    )
+    target_link_directories(test_modbus_maxconn PRIVATE
         ${LIBMODBUS_LIBRARY_DIRS}
     )
 endif()
@@ -112,6 +136,18 @@ target_compile_definitions(SimplePLC PRIVATE
 
 target_link_libraries(test_client PRIVATE
     open62541::open62541
+)
+
+target_link_libraries(test_modbus_responsetime PRIVATE
+    libmodbus::libmodbus
+)
+
+target_link_libraries(check_modbus_server PRIVATE
+    libmodbus::libmodbus
+)
+
+target_link_libraries(test_modbus_maxconn PRIVATE
+    libmodbus::libmodbus
 )
 
 # Copy script files to build directory

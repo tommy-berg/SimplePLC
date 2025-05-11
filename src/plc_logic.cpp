@@ -333,7 +333,7 @@ void PlcLogic::loop() {
     std::cout << "[PLC] Press SPACE to reload the script" << std::endl;
     
     platform::enableRawMode();
-    constexpr std::chrono::milliseconds SCAN_INTERVAL(100);
+    constexpr std::chrono::milliseconds SCAN_INTERVAL(1000);
     int cycle_count = 0;
     
     // Get script path from config
