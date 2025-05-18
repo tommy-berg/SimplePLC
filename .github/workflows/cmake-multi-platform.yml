@@ -60,8 +60,7 @@ jobs:
         git clone https://github.com/open62541/open62541.git
         cd open62541
         mkdir build && cd build
-        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUA_NAMESPACE_ZERO=FULL \
-              -DUA_ENABLE_AMALGAMATION=ON .. 
+        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUA_NAMESPACE_ZERO=FULL ..
         make -j$(nproc)
         sudo make install
         cd ../..
@@ -74,7 +73,6 @@ jobs:
       run: |
         git clone https://github.com/microsoft/vcpkg.git
         .\vcpkg\bootstrap-vcpkg.bat
-
     - name: Set VCPKG_ROOT
       if: runner.os == 'Windows'
       shell: bash
@@ -84,7 +82,6 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         .\vcpkg\vcpkg install libmodbus lua pkgconf open62541 --triplet ${{ matrix.triplet }}
-
     # -----------------------------------------------------------------------
     # 4 Configure
     # -----------------------------------------------------------------------
@@ -96,7 +93,6 @@ jobs:
           -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
           -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-
     - name: Configure (Linux - musl)
       if: runner.os == 'Linux' && matrix.compiler == 'musl'
       run: |
@@ -105,7 +101,6 @@ jobs:
           -DCMAKE_C_COMPILER=musl-gcc \
           -DCMAKE_CXX_COMPILER=g++ \
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-
     - name: Configure (Windows)
       if: runner.os == 'Windows'
       shell: cmd
@@ -115,7 +110,6 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
           -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
           -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
-
     # -----------------------------------------------------------------------
     # 5 Build
     # -----------------------------------------------------------------------
@@ -129,7 +123,6 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         strip build/SimplePLC || echo "strip failed (likely dynamic fallback)"
-
     # -----------------------------------------------------------------------
     # 7 Verify binaries
     # -----------------------------------------------------------------------
@@ -150,7 +143,6 @@ jobs:
       run: |
         file build/SimplePLC
         ldd build/SimplePLC || echo "Static binary (as expected)"
-
     # -----------------------------------------------------------------------
     # 9 Package artifacts
     # -----------------------------------------------------------------------
@@ -160,21 +152,18 @@ jobs:
         mkdir -p dist
         cp build/SimplePLC dist/
         zip SimplePLC-${{ matrix.os }}-${{ matrix.compiler }}-${{ github.ref_name }}.zip dist/*
-
     - name: Package (Linux musl)
       if: runner.os == 'Linux' && matrix.compiler == 'musl'
       run: |
         mkdir -p dist
         cp build/SimplePLC dist/
         zip SimplePLC-musl-${{ github.ref_name }}.zip dist/*
-
     - name: Package (Windows)
       if: runner.os == 'Windows'
       run: |
         mkdir dist
         copy build\Release\SimplePLC.exe dist\
         powershell Compress-Archive -Path dist\* -DestinationPath SimplePLC-windows-${{ github.ref_name }}.zip
-
     # -----------------------------------------------------------------------
     # 10 Publish GitHub Release
     # -----------------------------------------------------------------------
