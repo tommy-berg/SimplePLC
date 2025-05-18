@@ -84,41 +84,10 @@ add_executable(SimplePLC
     src/opcua_server.cpp
 )
 
-# ───────────────── Test Client ─────────────────
-add_executable(test_client
-    src/test_client.cpp
-)
-
-# ───────────────── Modbus Response Time Benchmark ─────────────────
-add_executable(test_modbus_responsetime
-    src/test_modbus_responsetime.cpp
-)
-
-# Add server check utility
-add_executable(check_modbus_server
-    src/check_modbus_server.cpp
-)
-
-# Add maximum connections benchmark
-add_executable(test_modbus_maxconn
-    src/test_modbus_maxconn.cpp
-)
 
 # On Unix-like systems, add library search paths from pkg-config
 if(NOT WIN32)
     target_link_directories(SimplePLC PRIVATE
-        ${LIBMODBUS_LIBRARY_DIRS}
-    )
-    target_link_directories(test_client PRIVATE
-        ${LIBMODBUS_LIBRARY_DIRS}
-    )
-    target_link_directories(test_modbus_responsetime PRIVATE
-        ${LIBMODBUS_LIBRARY_DIRS}
-    )
-    target_link_directories(check_modbus_server PRIVATE
-        ${LIBMODBUS_LIBRARY_DIRS}
-    )
-    target_link_directories(test_modbus_maxconn PRIVATE
         ${LIBMODBUS_LIBRARY_DIRS}
     )
 endif()
@@ -132,22 +101,6 @@ target_link_libraries(SimplePLC PRIVATE
 # Add a definition to explicitly tell platform.h that we're using Open62541's atomic functions
 target_compile_definitions(SimplePLC PRIVATE
     UA_ATOMIC_OPERATIONS_DEFINED=1
-)
-
-target_link_libraries(test_client PRIVATE
-    open62541::open62541
-)
-
-target_link_libraries(test_modbus_responsetime PRIVATE
-    libmodbus::libmodbus
-)
-
-target_link_libraries(check_modbus_server PRIVATE
-    libmodbus::libmodbus
-)
-
-target_link_libraries(test_modbus_maxconn PRIVATE
-    libmodbus::libmodbus
 )
 
 # Copy script files to build directory
