@@ -1,0 +1,11 @@
+function cycle()
+    local boxAtEnd = modbus.readCoil(0)
+
+    if boxAtEnd then
+        modbus.writeDiscreteInput(0, true)  -- Start conveyor
+        print("No box detected, starting conveyor")
+    else
+        modbus.writeDiscreteInput(0, false) -- Stop conveyor
+        print("Box detected, conveyor stopped")
+    end
+end

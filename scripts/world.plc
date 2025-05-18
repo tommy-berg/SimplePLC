@@ -1,0 +1,129 @@
+-- World simulation: Chemical Mixing Process
+-- This simulation models a simple chemical process with tank mixing,
+-- heating system, and outlet valve control
+
+-- Initialize random number generator
+math.randomseed(os.time())
+
+-- Process state variables
+local tank_capacity = 100  -- Maximum tank level (%)
+local tank_level = 50      -- Current tank level (%)
+local temperature = 25     -- Current temperature (°C)
+local pressure = 50        -- Current pressure (PSI)
+local mixer_speed = 0      -- Current mixer speed (0-100%)
+local flow_rate = 0        -- Current flow rate through valve (0-100%)
+
+-- Process dynamics parameters
+local pump_rate = 2        -- Rate of filling when pump is on (% per cycle)
+local drain_rate = 3       -- Rate of draining when valve is on (% per cycle)
+local heat_rate = 0.5      -- Rate of temperature increase (°C per cycle)
+local cool_rate = 0.3      -- Rate of temperature decrease (°C per cycle)
+local min_temp = 20        -- Minimum temperature (°C)
+local max_temp = 90        -- Maximum temperature (°C)
+local max_pressure = 100   -- Maximum pressure (PSI)
+
+-- Safety thresholds
+local high_level_threshold = 80   -- High level alarm threshold (%)
+local low_level_threshold = 20    -- Low level alarm threshold (%)
+local high_temp_threshold = 75    -- High temperature alarm threshold (°C)
+
+-- Helper function for random float values
+function randomFloat(min, max)
+    return min + math.random() * (max - min)
+end
+
+-- Function that allows overriding register values (for debugging)
+function override_register(address)
+    -- Return nil to use the actual register value or override with a number
+    return nil
+end
+
+-- Main simulation cycle - called periodically by the PLC logic
+function cycle()
+    -- Read control inputs from Modbus coils
+    local pump_on = modbus.readCoil(0)         -- Pump control
+    local mixer_on = modbus.readCoil(1)        -- Mixer control
+    local valve_open = modbus.readCoil(2)      -- Outlet valve control
+    local emergency_stop = modbus.readCoil(3)  -- Emergency stop
+    
+    -- In emergency mode, turn everything off for safety
+    if emergency_stop then
+        pump_on = false
+        mixer_on = false
+        
+        -- Keep valve open in emergency to drain the tank
+        valve_open = true
+        
+        -- Set emergency status
+        modbus.writeDiscreteInput(3, true)
+    else
+        modbus.writeDiscreteInput(3, false)
+    end
+    
+    -- Update tank level based on pump and valve states
+    if pump_on and tank_level < tank_capacity then
+        tank_level = tank_level + pump_rate + randomFloat(-0.5, 0.5)
+    end
+    
+    if valve_open and tank_level > 0 then
+        tank_level = tank_level - drain_rate - randomFloat(-0.3, 0.7)
+    end
+    
+    -- Ensure tank level stays within valid range
+    if tank_level > tank_capacity then tank_level = tank_capacity end
+    if tank_level < 0 then tank_level = 0 end
+    
+    -- Update mixer speed
+    if mixer_on then
+        mixer_speed = 50 + math.random(0, 50)  -- Variable speed when on
+    else
+        mixer_speed = 0
+    end
+    
+    -- Update temperature - heating occurs when mixer is on, cooling otherwise
+    if mixer_on then
+        temperature = temperature + heat_rate + randomFloat(-0.2, 0.2)
+    else
+        temperature = temperature - cool_rate - randomFloat(-0.1, 0.1)
+    end
+    
+    -- Ensure temperature stays within valid range
+    if temperature > max_temp then temperature = max_temp end
+    if temperature < min_temp then temperature = min_temp end
+    
+    -- Update pressure - related to temperature and tank level
+    pressure = 30 + (tank_level * 0.3) + (temperature * 0.4) + math.random(-2, 2)
+    if pressure > max_pressure then pressure = max_pressure end
+    if pressure < 0 then pressure = 0 end
+    
+    -- Update flow rate - related to valve state and tank level
+    if valve_open then
+        -- Flow rate depends on tank level (more pressure = more flow)
+        flow_rate = math.min(tank_level, 100) * 0.5 + math.random(0, 20)
+    else
+        flow_rate = 0
+    end
+    
+    -- Set alarms
+    modbus.writeDiscreteInput(0, tank_level > high_level_threshold)  -- High level alarm
+    modbus.writeDiscreteInput(1, tank_level < low_level_threshold)   -- Low level alarm
+    modbus.writeDiscreteInput(2, temperature > high_temp_threshold)  -- High temperature alarm
+    
+    -- Write process values to Modbus registers
+    modbus.writeHoldingRegister(0, math.floor(tank_level + 0.5))  -- Tank level (integer)
+    modbus.writeHoldingRegister(1, math.floor(mixer_speed + 0.5)) -- Mixer speed (integer)
+    modbus.writeHoldingRegister(2, math.floor(flow_rate + 0.5))   -- Flow rate (integer)
+    
+    modbus.writeInputRegister(0, math.floor(temperature + 0.5))   -- Temperature (integer)
+    modbus.writeInputRegister(1, math.floor(pressure + 0.5))      -- Pressure (integer)
+    
+    -- Log simulation state
+    print(string.format("SIMULATION: Pump=%s, Mixer=%s, Valve=%s, E-Stop=%s, Level=%.1f%%, Temp=%.1f°C, Pressure=%.1fPSI", 
+        pump_on and "ON" or "OFF",
+        mixer_on and "ON" or "OFF",
+        valve_open and "OPEN" or "CLOSED",
+        emergency_stop and "ACTIVE" or "OFF",
+        tank_level,
+        temperature,
+        pressure))
+end

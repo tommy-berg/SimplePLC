@@ -1,0 +1,182 @@
+name: Multi Platform Build
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write  # needed for GitHub release uploads
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---------- Linux ----------
+          - os: ubuntu-latest
+            c_compiler: gcc
+            cpp_compiler: g++
+            build_type: Release
+            triplet: x64-linux
+            compiler: gcc
+
+          - os: ubuntu-latest
+            c_compiler: clang
+            cpp_compiler: clang++
+            build_type: Release
+            triplet: x64-linux
+            compiler: clang
+
+          - os: ubuntu-latest
+            build_type: Release
+            compiler: musl
+
+          # ---------- Windows ----------
+          - os: windows-latest
+            build_type: Release
+            triplet: x64-windows-static
+
+    steps:
+    # -----------------------------------------------------------------------
+    # 1 Checkout
+    # -----------------------------------------------------------------------
+    - uses: actions/checkout@v4
+
+    # -----------------------------------------------------------------------
+    # 2 Dependencies – Linux
+    # -----------------------------------------------------------------------
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential clang pkg-config cmake \
+                             libmodbus-dev liblua5.3-dev zip musl musl-tools \
+                             libxml2-dev 
+        git clone https://github.com/open62541/open62541.git
+        cd open62541
+        mkdir build && cd build
+        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUA_NAMESPACE_ZERO=FULL ..
+        make -j$(nproc)
+        sudo make install
+        cd ../..
+    - name: Remove broken open62541 CMake config (workaround)
+      if: runner.os == 'Linux'
+      run: sudo rm -rf /usr/local/lib/cmake/open62541
+    # -----------------------------------------------------------------------
+    # 3 Dependencies – Windows (vcpkg)
+    # -----------------------------------------------------------------------
+    - name: Install vcpkg
+      if: runner.os == 'Windows'
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        .\vcpkg\bootstrap-vcpkg.bat
+    - name: Set VCPKG_ROOT
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+
+    - name: Install packages via vcpkg
+      if: runner.os == 'Windows'
+      run: |
+        .\vcpkg\vcpkg install libmodbus lua pkgconf open62541 --triplet ${{ matrix.triplet }}
+    # -----------------------------------------------------------------------
+    # 4 Configure
+    # -----------------------------------------------------------------------
+    - name: Configure (Linux - GCC/Clang)
+      if: runner.os == 'Linux' && matrix.compiler != 'musl'
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+    - name: Configure (Linux - musl)
+      if: runner.os == 'Linux' && matrix.compiler == 'musl'
+      run: |
+        export CC=musl-gcc
+        cmake -S . -B build \
+          -DCMAKE_C_COMPILER=musl-gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+    - name: Configure (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: >
+        cmake -S . -B build ^
+          -G "Visual Studio 17 2022" -A x64 ^
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+    # -----------------------------------------------------------------------
+    # 5 Build
+    # -----------------------------------------------------------------------
+    - name: Build
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    # -----------------------------------------------------------------------
+    # 6 Strip binaries (Linux)
+    # -----------------------------------------------------------------------
+    - name: Strip binaries (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        strip build/SimplePLC || echo "strip failed (likely dynamic fallback)"
+    # -----------------------------------------------------------------------
+    # 7 Verify binaries
+    # -----------------------------------------------------------------------
+    - name: Verify binary (Linux)
+      if: runner.os == 'Linux'
+      run: test -f build/SimplePLC || (echo "Binary not found!" && exit 1)
+
+    - name: Verify binary (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: if not exist build\Release\SimplePLC.exe exit 1
+
+    # -----------------------------------------------------------------------
+    # 8 Check static (musl only)
+    # -----------------------------------------------------------------------
+    - name: Check static binary (musl)
+      if: runner.os == 'Linux' && matrix.compiler == 'musl'
+      run: |
+        file build/SimplePLC
+        ldd build/SimplePLC || echo "Static binary (as expected)"
+    # -----------------------------------------------------------------------
+    # 9 Package artifacts
+    # -----------------------------------------------------------------------
+    - name: Package (Linux GCC/Clang)
+      if: runner.os == 'Linux' && matrix.compiler != 'musl'
+      run: |
+        mkdir -p dist
+        cp build/SimplePLC dist/
+        zip SimplePLC-${{ matrix.os }}-${{ matrix.compiler }}-${{ github.ref_name }}.zip dist/*
+    - name: Package (Linux musl)
+      if: runner.os == 'Linux' && matrix.compiler == 'musl'
+      run: |
+        mkdir -p dist
+        cp build/SimplePLC dist/
+        zip SimplePLC-musl-${{ github.ref_name }}.zip dist/*
+    - name: Package (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        mkdir dist
+        copy build\Release\SimplePLC.exe dist\
+        powershell Compress-Archive -Path dist\* -DestinationPath SimplePLC-windows-${{ github.ref_name }}.zip
+    # -----------------------------------------------------------------------
+    # 10 Publish GitHub Release
+    # -----------------------------------------------------------------------
+    - name: Publish GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          SimplePLC-ubuntu-latest-gcc-${{ github.ref_name }}.zip
+          SimplePLC-ubuntu-latest-clang-${{ github.ref_name }}.zip
+          SimplePLC-musl-${{ github.ref_name }}.zip
+          SimplePLC-windows-${{ github.ref_name }}.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
