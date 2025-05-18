@@ -64,7 +64,9 @@ jobs:
         make -j$(nproc)
         sudo make install
         cd ../..
-  
+    - name: Remove broken open62541 CMake config (workaround)
+      if: runner.os == 'Linux'
+      run: sudo rm -rf /usr/local/lib/cmake/open62541
     # -----------------------------------------------------------------------
     # 3 Dependencies – Windows (vcpkg)
     # -----------------------------------------------------------------------
