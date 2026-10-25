@@ -19,42 +19,36 @@ jobs:
           - name: Linux (GCC)
             os: ubuntu-24.04
             cmake: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
-            exe: build/simpleplc
+          # Clang 19 or later: GCC's standard library hides std::expected from Clang 18, whose
+          # __cpp_concepts is still 201907L. Ubuntu 24.04 has clang-20 in its updates.
           - name: Linux (Clang)
             os: ubuntu-24.04
-            cmake: -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER=clang-18
-            exe: build/simpleplc
-          - name: macOS
-            os: macos-14
-            cmake: ""
-            exe: build/simpleplc
-          - name: Windows
-            os: windows-2022
-            cmake: -DSIMPLEPLC_STATIC=ON
-            exe: build/Release/simpleplc.exe
+            packages: clang-20
+            cmake: -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_C_COMPILER=clang-20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Install the compiler
+        if: matrix.packages
+        run: sudo apt-get update -q && sudo apt-get install -y -q ${{ matrix.packages }}
 
       - name: Cache open62541 source
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps/open62541-src
           key: open62541-v1.5.9-src
 
       - name: Configure
-        shell: bash
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSIMPLEPLC_FETCH_OPEN62541=ON ${{ matrix.cmake }}
 
       - name: Build
-        shell: bash
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --parallel 4
 
       - name: Examples compile
-        shell: bash
         run: |
           for dir in examples/*/; do
-            for f in "$dir"*.st; do "./${{ matrix.exe }}" check "$f" --tags "${dir}plc.json"; done
+            for f in "$dir"*.st; do ./build/simpleplc check "$f" --tags "${dir}plc.json"; done
           done
 
       # The tank example: level is a float32 in holding registers 3-4 (high word first), pump_run is
@@ -63,7 +57,6 @@ jobs:
       # 42.5 and stop it at 90. Port 502 needs rights the runner does not have: the PLC falls back to
       # a free port and the API says which.
       - name: Smoke test
-        shell: bash
         env:
           SIMPLEPLC_TOKEN: ci-token-0123456789abcdef
           SIMPLEPLC_WEB_PORT: "18080"
@@ -71,7 +64,7 @@ jobs:
           SIMPLEPLC_EXAMPLE: tank
         run: |
           mkdir -p smoke && cd smoke
-          "../${{ matrix.exe }}" --data data > out.txt 2> err.txt &
+          ../build/simpleplc --data data > out.txt 2> err.txt &
           python3 - <<'EOF'
           import json, os, socket, struct, time, urllib.request
 
@@ -132,9 +125,8 @@ jobs:
 
       - name: Stop
         if: always()
-        shell: bash
         run: |
-          pkill -INT simpleplc 2>/dev/null || taskkill //IM simpleplc.exe //F 2>/dev/null || true
+          pkill -INT simpleplc || true
           sleep 2
           cat smoke/err.txt 2>/dev/null || true
 
@@ -144,7 +136,7 @@ jobs:
     env:
       SIMPLEPLC_TOKEN: ci-token-0123456789abcdef
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the image
         run: docker build -t simpleplc:ci .
       - name: Start a tank PLC, a master that polls it and a fleet

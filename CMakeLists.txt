@@ -93,6 +93,11 @@ else()
     set(UA_FORCE_WERROR OFF CACHE BOOL "" FORCE)
     set(UA_LOGLEVEL 300 CACHE STRING "" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    # open62541 turns on link-time optimisation whenever the compiler supports it; with Clang on
+    # Linux its archive then holds LLVM bitcode that the system linker cannot read
+    if(NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
+    endif()
     FetchContent_Declare(open62541
         GIT_REPOSITORY https://github.com/open62541/open62541.git
         GIT_TAG ${SIMPLEPLC_OPEN62541_TAG}
