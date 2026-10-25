@@ -1,22 +1,57 @@
-# SimplePLC
+<h1 align="center">SimplePLC</h1>
 
-[![CI](https://github.com/tommy-berg/SimplePLC/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tommy-berg/SimplePLC/actions/workflows/ci.yml)
+<p align="center">
+  <b>A soft PLC in one small executable.</b><br>
+  IEC 61131-3 Structured Text · Modbus TCP · OPC UA · web panel · REST API · MCP for AI agents
+</p>
 
-SimplePLC is a soft PLC in one small executable: each copy is one PLC, on a Raspberry Pi next
-to a machine, in a container or on a laptop. Programs are IEC 61131-3 Structured Text, compiled
-and checked before they run; the process image is served as Modbus TCP and OPC UA, with a web
-panel, a REST API and an MCP server for agents. Several PLCs talk Modbus TCP to each other, and
-a fleet gives one panel and one agent endpoint for all of them.
+<p align="center">
+  <a href="https://github.com/tommy-berg/SimplePLC/actions/workflows/ci.yml"><img src="https://github.com/tommy-berg/SimplePLC/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://hub.docker.com/r/tommyhbe/simpleplc"><img src="https://img.shields.io/docker/pulls/tommyhbe/simpleplc" alt="Docker pulls"></a>
+  <a href="https://hub.docker.com/r/tommyhbe/simpleplc"><img src="https://img.shields.io/docker/image-size/tommyhbe/simpleplc/latest?label=image" alt="Image size"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
+</p>
 
-![The SimplePLC panel: a PLC's overview, with the controller front, its state and cycle figures](docs/screenshot.png)
+<p align="center">
+  <img src="docs/overview.png" alt="A PLC's overview in the SimplePLC panel: the controller front with its LEDs, Running, cycle, latency and workload" width="900">
+</p>
 
-## Start
+Each copy of SimplePLC is **one PLC**: on a Raspberry Pi next to a machine, on a Linux PC or in a
+container. Programs are Structured Text, compiled and checked before they run. The process image is
+served as Modbus TCP and OPC UA, with a web panel, a REST API and an MCP server for agents. Several
+PLCs talk Modbus TCP to each other, and a **fleet** gives one panel and one agent endpoint for all of them.
 
-Download the file for your system from the
-[latest release](https://github.com/tommy-berg/SimplePLC/releases/latest)
-(Linux x86-64 and ARM, including 32-bit Raspberry Pi OS; macOS; Windows) and run it:
+- **A strict, auditable compiler.** No silent narrowing, diagnostics that say how to fix the problem, and the program *as compiled* on request
+- **Deterministic.** Verified bytecode with no allocation, and the same bits on every platform (SimplePLC has its own maths functions)
+- **Online change.** Saving a program replaces the running one between two cycles and keeps the values of its variables
+- **Safe on failure.** Run-time errors stop the PLC in FAULT with the line, and outputs get their substitute values
+- **Made for agents.** Every operation is an MCP tool: setting up a PLC, tags, programs, forcing, logs
+- **Small.** One static Linux binary for x86-64, ARM64 and 32-bit Raspberry Pi OS, and an 11 MB container image
+
+---
+
+## 🚀 Start
+
+### Docker
+
+The image is on Docker Hub: [tommyhbe/simpleplc](https://hub.docker.com/r/tommyhbe/simpleplc)
+(linux/amd64, linux/arm64 and linux/arm/v7, so it also runs on Docker Desktop for macOS and Windows).
 
 ```
+docker pull tommyhbe/simpleplc
+docker run -p 8080:8080 -p 502:502 -p 4840:4840 -v plc1:/data tommyhbe/simpleplc
+```
+
+The setup code is in the container's log (`docker logs <container>`).
+
+### Linux and Raspberry Pi
+
+Download the file for your machine from the
+[latest release](https://github.com/tommy-berg/SimplePLC/releases/latest) (x86-64, ARM64, or
+ARMv7 for 32-bit Raspberry Pi OS), make it executable and run it:
+
+```
+chmod +x simpleplc-linux-arm64 && mv simpleplc-linux-arm64 simpleplc
 ./simpleplc
 ```
 
@@ -30,45 +65,46 @@ Ready. Press Ctrl+C to stop.
 ```
 
 Open the web panel, enter the setup code and choose a password. The PLC is named after the
-computer and starts empty: write a program in the editor, connect a Modbus device under I/O,
-or start from an example on the Overview (a tank level control, a traffic light, remote I/O
-between two PLCs, ...). `sudo simpleplc install-service` makes it a system service on Linux: it
-starts at every boot with nobody logged in, may use port 502, and keeps its data in
-`/var/lib/simpleplc`. Without sudo (and on macOS) it starts at login.
+computer and starts empty. From there you can write a program in the editor, connect a Modbus device
+under **I/O**, or start from an example on the Overview (tank level control, traffic light, remote
+I/O between two PLCs, ...).
 
-With Docker (amd64, arm64, arm/v7); the setup code is in the container's log:
+`sudo simpleplc install-service` makes it a system service. It then starts at every boot with nobody
+logged in, may use port 502, and keeps its data in `/var/lib/simpleplc`. Without sudo it starts at login.
 
-```
-docker run -p 8080:8080 -p 502:502 -p 4840:4840 -v plc1:/data ghcr.io/tommy-berg/simpleplc
-```
+## 🔌 Connect
 
-## Connect
-
-Tags name addresses in the four Modbus areas (coils, discrete inputs, holding and input
-registers) with a type (bool, int16, uint16, int32, uint32, float32; 32-bit values take two
-registers, high word first) and, for outputs, a substitute value that is written at STOP and FAULT.
+Tags name addresses in the four Modbus areas (coils, discrete inputs, holding and input registers)
+and give each one a type: bool, int16, uint16, int32, uint32 or float32. 32-bit values take two
+registers, high word first. Outputs can have a **substitute value**, which is written at STOP and FAULT.
 
 | Client | How |
 |--------|-----|
-| Modbus TCP (HMIs, Factory I/O, pymodbus, QModMaster) | port 502, any unit id, addresses from 0; functions 1–6, 15, 16, 17, 22, 23 and 43/14 |
-| OPC UA (UaExpert, Ignition, Node-RED) | `opc.tcp://<host>:4840`, security policy None; each tag is the variable `ns=1;s=<tag name>`; at most 100 sessions, each ending at the latest a minute after its last request |
-| Scripts | create a token under *Users and tokens*, then `curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/plcs` |
-| AI agents (MCP) | `claude mcp add --transport http simpleplc http://localhost:8080/mcp --header "Authorization: Bearer <token>"` |
+| **Modbus TCP** (HMIs, Factory I/O, pymodbus, QModMaster) | port 502, any unit id, addresses from 0; functions 1–6, 15, 16, 17, 22, 23 and 43/14 |
+| **OPC UA** (UaExpert, Ignition, Node-RED) | `opc.tcp://<host>:4840`, security policy None; each tag is the variable `ns=1;s=<tag name>`; at most 100 sessions, each ending at the latest a minute after its last request |
+| **Scripts** | create a token under *Users and tokens*, then `curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/plcs` |
+| **AI agents (MCP)** | `claude mcp add --transport http simpleplc http://localhost:8080/mcp --header "Authorization: Bearer <token>"` |
 
-Point an agent at a device for its PLC, or at a fleet for all of them (the tools then take the
-PLC's id). Every PLC operation of the REST API is an MCP tool: setting a PLC up, tags, checking
-and deploying programs with every diagnostic, tags and program variables, forcing, events, logs,
-device information, Modbus reads and writes of any device, and prompts for writing a program and
-building a network. Without a running SimplePLC an agent can start its own: `claude mcp add
-simpleplc -- simpleplc mcp --data ./lab`; that PLC starts blank, its Modbus and OPC UA listen on
-127.0.0.1 only (`--listen` changes it), and it has no web panel unless asked for (`--web`, or
-`--port N`). The REST API, the fleet and the MCP server are described in [docs/api.md](docs/api.md).
+<p align="center">
+  <img src="docs/communication.png" alt="The Communication page: a link to another PLC, the Modbus TCP and OPC UA servers with their clients, and their security" width="800">
+</p>
 
-Ports below 1024 need extra rights on Linux and macOS. When port 502 cannot be used, SimplePLC
-takes the next free port from 5020 (OPC UA: from 4841) and says so; to use 502 on Linux, run
-`sudo setcap cap_net_bind_service=+ep ./simpleplc` once. Containers may use 502 as is.
+Point an agent at a device to work on its PLC, or at a fleet to work on all of them (the tools then
+take the PLC's id). Every PLC operation of the REST API is an MCP tool: setting a PLC up, tags,
+checking and deploying programs with every diagnostic, program variables, forcing, events, logs,
+device information, and Modbus reads and writes of any device. There are also prompts for writing a
+program and for building a network.
 
-## Programs
+An agent can also start its own PLC, with no SimplePLC running:
+`claude mcp add simpleplc -- simpleplc mcp --data ./lab`. That PLC starts blank. Its Modbus and
+OPC UA listen on 127.0.0.1 only (`--listen` changes it), and it has no web panel unless you ask for
+one (`--web`, or `--port N`). [docs/api.md](docs/api.md) describes the REST API, the fleet and the MCP server.
+
+Ports below 1024 need extra rights. When port 502 cannot be used, SimplePLC takes the next free port
+from 5020 (OPC UA: from 4841) and says so. To use 502, run
+`sudo setcap cap_net_bind_service=+ep ./simpleplc` once. Containers can use 502 as is.
+
+## 📝 Programs
 
 ```st
 (* Start the pump at or below start_level, stop it at stop_level. The level
@@ -94,50 +130,68 @@ END_PROGRAM
 ```
 
 A program declares the tags it uses in `VAR_EXTERNAL` (`CONSTANT` for the ones it only reads)
-and keeps its state in `VAR`; the standard timers, edge detectors, counters and functions are
-there. The compiler is strict: no silent narrowing (`INT := DINT` needs a conversion), no
-`a < b < c`, and every diagnostic says how to fix it. `simpleplc check main.st --tags tags.json
---listing` prints the problems and the program *as compiled*, every conversion and parenthesis
-written out. Programs run as verified bytecode without allocation; a run-time error (overflow,
-division by zero, an index out of range) stops the PLC in FAULT with the line, and tags with a
-substitute value get it. Saving a changed program replaces the running one between two cycles and
-keeps the values of the variables that still exist; one that does not compile is refused and
-the running one carries on. The same program gives the same bits on every platform: the maths
-functions are SimplePLC's own. The reference is the panel's Help page and
-[docs/structured-text.md](docs/structured-text.md); [docs/st-compliance.md](docs/st-compliance.md)
-states what is implemented and how.
+and keeps its state in `VAR`. The standard timers, edge detectors, counters and functions are all
+available.
 
-## A network of PLCs
+- **Strict compiler.** No silent narrowing (`INT := DINT` needs a conversion), no `a < b < c`, and
+  every diagnostic says how to fix the problem. `simpleplc check main.st --tags tags.json --listing`
+  prints the problems and the program *as compiled*, with every conversion and parenthesis written out.
+- **Runs as verified bytecode** with no allocation. A run-time error (overflow, division by zero,
+  an index out of range) stops the PLC in FAULT with the line, and tags with a substitute value get it.
+- **Online change.** Saving a changed program replaces the running one between two cycles and
+  keeps the values of the variables that still exist. A program that doesn't compile is refused,
+  and the running one carries on.
+- **Same results everywhere.** A program gives the same bits on every platform, because the maths
+  functions are SimplePLC's own.
 
-Several PLCs are several SimplePLCs: processes, containers or Raspberry Pis that talk Modbus
-TCP. A **link** in a PLC's configuration makes it a Modbus TCP client of another device: which
-of its tags to read from which addresses, which to write, a period, and a status tag that is
-TRUE while the device answers. Programs only use tags; every PLC is a Modbus TCP server to
-whoever polls it. Two PLCs and a fleet on one Docker network (on Raspberry Pis, give
-`--device` their addresses instead):
+The reference is the panel's Help page and [docs/structured-text.md](docs/structured-text.md).
+[docs/st-compliance.md](docs/st-compliance.md) states what is implemented and how.
+
+<p align="center">
+  <img src="docs/program.png" alt="The program editor with live values of tags and variables next to the code" width="800">
+</p>
+
+## 🏭 A network of PLCs
+
+Several PLCs are several SimplePLCs: processes, containers or Raspberry Pis that talk Modbus TCP.
+A **link** in a PLC's configuration makes it a Modbus TCP client of another device. The link says
+which of its tags to read from which addresses, which to write, how often, and which status tag is
+TRUE while the device answers. Programs only use tags, and every PLC is a Modbus TCP server to whoever
+polls it.
+
+Two PLCs and a fleet on one Docker network (on Raspberry Pis, give `--device` their addresses instead):
 
 ```
 export SIMPLEPLC_TOKEN=$(openssl rand -hex 16)
 docker network create plant
 docker run -d --name tank --hostname tank --network plant -e SIMPLEPLC_TOKEN \
-    -e SIMPLEPLC_EXAMPLE=tank ghcr.io/tommy-berg/simpleplc
+    -e SIMPLEPLC_EXAMPLE=tank tommyhbe/simpleplc
 docker run -d --name alarms --hostname alarms --network plant -e SIMPLEPLC_TOKEN \
-    -e SIMPLEPLC_EXAMPLE=remote-io ghcr.io/tommy-berg/simpleplc
+    -e SIMPLEPLC_EXAMPLE=remote-io tommyhbe/simpleplc
 docker run -d --name fleet --network plant -p 127.0.0.1:8080:8080 -e SIMPLEPLC_TOKEN \
-    -e SIMPLEPLC_DEVICES=tank,alarms ghcr.io/tommy-berg/simpleplc fleet
+    -e SIMPLEPLC_DEVICES=tank,alarms tommyhbe/simpleplc fleet
 ```
 
-`alarms` runs the remote-io example: its link reads `tank`'s level every 200 ms and its
-program raises an alarm above a limit. The **fleet** shows the PLCs of many devices on one
-panel, with their links, and gives agents one MCP endpoint for all of them; it can also start
-without devices and adopt them with a pairing code ([docs/api.md](docs/api.md), "The fleet").
+`alarms` runs the remote-io example. Its link reads `tank`'s level every 200 ms, and its program
+raises an alarm above a limit. The **fleet** shows the PLCs of many devices on one panel, with their
+links, and gives agents one MCP endpoint for all of them. It can also start without devices and adopt
+them with a pairing code ([docs/api.md](docs/api.md), "The fleet").
 
-![A fleet: three PLCs on their own devices, each with its lights, program, cycle and links](docs/fleet.png)
+<table>
+  <tr>
+    <td><img src="docs/fleet.png" alt="A fleet of three PLCs, all running, with their cycle, links and version"></td>
+    <td><img src="docs/fault.png" alt="The same fleet with the pump controller in FAULT: division by zero at main.st line 47"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Three PLCs in one fleet</sub></td>
+    <td align="center"><sub>A fault shows where it happened</sub></td>
+  </tr>
+</table>
 
-## Settings
+## ⚙️ Settings
 
-Everything lives in one data directory (`./simpleplc-data`, or `~/.simpleplc` when the
-current directory is not writable; `/data` in the container). One process uses it at a time.
+Everything lives in one data directory: `./simpleplc-data`, or `~/.simpleplc` when the current
+directory is not writable, and `/data` in the container. One process uses it at a time.
 
 ```
 config.json          web port, log level and the PLC: id, name, tags, tasks, links, ports
@@ -147,13 +201,17 @@ programs/<name>.st   programs and libraries (1 MB each, 2 MB together); .history
 mode                 run or stop, as last commanded on the panel or the API: the PLC powers up in it
 ```
 
-The panel edits all of it. A PLC has up to 8 tasks (`cycle_ms` 1–60000) and 16 links; `realtime`
-gives tasks with a `priority` real-time scheduling (SCHED_FIFO on Linux, time-constraint on
-macOS). Retentive memory: tags with `"retain": true` and `RETAIN` variables are written to
-`retain.json` when they change, at most once a second, and come back after a power cut; every other
-tag starts at 0 and every other variable from its initial value. The commanded mode is kept too, so
-a PLC in STOP comes back in STOP. A new data directory starts from these flags or variables; an existing one
-keeps its configuration and says so:
+The panel edits all of it.
+
+- **Tasks and links:** a PLC has up to 8 tasks (`cycle_ms` 1–60000) and 16 links. `realtime` gives
+  tasks with a `priority` real-time scheduling (SCHED_FIFO).
+- **Retentive memory:** tags with `"retain": true` and `RETAIN` variables are written to
+  `retain.json` when they change, at most once a second, and come back after a power cut. Every
+  other tag starts at 0, and every other variable starts from its initial value.
+- **Mode:** the commanded mode is kept too, so a PLC in STOP comes back in STOP.
+
+A new data directory starts from these flags or environment variables. An existing one keeps its
+configuration and says so.
 
 | Flag | Environment | Default |
 |------|-------------|---------|
@@ -169,32 +227,38 @@ simpleplc fleet --device URL ...             one panel and MCP endpoint for the 
 simpleplc mcp [--data DIR] [--web]           MCP on stdin/stdout with its own PLC
 simpleplc mcp --url URL --token TOKEN        MCP on stdin/stdout for a running SimplePLC or fleet
 simpleplc check FILE.st ... [--tags FILE] [--listing]    compile and print every problem
-simpleplc install-service                    run at login; with sudo on Linux: a system service at boot
+simpleplc install-service                    run at login; with sudo: a system service at boot
 simpleplc --version | --help
 ```
 
 `--data` and `--port` also come from `SIMPLEPLC_DATA` and `SIMPLEPLC_WEB_PORT`. `SIMPLEPLC_TOKEN`
-is an administrator token for scripts, agents and fleets, never stored; a fleet signs in to its
-`--device` devices with `SIMPLEPLC_DEVICE_TOKEN` (default: its own `SIMPLEPLC_TOKEN`).
+is an administrator token for scripts, agents and fleets, and is never stored. A fleet signs in to
+its `--device` devices with `SIMPLEPLC_DEVICE_TOKEN` (default: its own `SIMPLEPLC_TOKEN`).
 
-## Security
+## 🔒 Security
 
-The panel and the API need a login or a token, but are served over plain HTTP. Modbus TCP has
-no authentication and OPC UA runs with security policy None (no encryption, no signing): anyone
-who can reach those ports can read and write the PLC. Keep PLCs on a network you trust, or set
-their `listen` addresses to `127.0.0.1` in Settings; the network above publishes only the
-fleet's panel, on `127.0.0.1`. Programs have no file, process or network access: they read and
-write their tags, and the bytecode is verified before it runs. A fleet holds an administrator
-token for every device: treat it like the engineering station it is.
+> [!WARNING]
+> Modbus TCP has no authentication, and OPC UA runs with security policy None (no encryption, no
+> signing). Anyone who can reach those ports can read and write the PLC.
 
-## Build from source
+- **Network:** keep PLCs on a network you trust, or set their `listen` addresses to `127.0.0.1` in
+  Settings. The network example above publishes only the fleet's panel, on `127.0.0.1`.
+- **Panel and API:** they need a login or a token, but are served over plain HTTP.
+- **Programs:** they have no file, process or network access. They read and write their tags, and
+  the bytecode is verified before it runs.
+- **Fleet:** a fleet holds an administrator token for every device, so treat it like the
+  engineering station it is.
 
-Needs a C++23 compiler (GCC 13, Clang 17, MSVC 2022) and CMake 3.24; `cmake -B build && cmake --build build -j`
-builds `./build/simpleplc`. An installed open62541 1.4+ is used when found; otherwise (or with
-`-DSIMPLEPLC_FETCH_OPEN62541=ON`) open62541 1.5.9 is built from source, which needs Python 3
-and Git. `-DSIMPLEPLC_STATIC=ON` links statically (Linux with musl, Windows). The Dockerfile
-builds the same static binary for any platform Docker can build for.
+## 🛠️ Build from source
+
+You need a C++23 compiler (GCC 13 or later, or Clang 19 or later) and CMake 3.24.
+`cmake -B build && cmake --build build -j` builds `./build/simpleplc`.
+
+- **open62541:** an installed open62541 1.4+ is used when found. Otherwise (or with
+  `-DSIMPLEPLC_FETCH_OPEN62541=ON`), open62541 1.5.9 is built from source, which needs Python 3 and Git.
+- **Static builds:** `-DSIMPLEPLC_STATIC=ON` links statically (with musl, as the releases do). The
+  Dockerfile builds the same static binary for any platform Docker can build for.
 
 ## License
 
-MIT, see [LICENSE](LICENSE); bundled components and their licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+MIT, see [LICENSE](LICENSE). Bundled components and their licences are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
