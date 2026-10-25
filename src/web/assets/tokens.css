@@ -1,0 +1,117 @@
+/* SimplePLC panel: design tokens.
+   Monochrome. Colour carries state and nothing else. System fonts only: the panel
+   runs offline on a Raspberry Pi and embeds no font files. Lift this file as-is.
+   Every colour is written once, as light-dark(light, dark): the system's scheme picks
+   the side, and this browser's choice (Settings, Display) fixes it with data-theme. */
+
+:root {
+    color-scheme: light dark;
+
+    /* Type */
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace; /* ST and commands to paste, nothing else */
+    --text-12: 12px;  /* column heads, figure labels, hints */
+    --text-13: 13px;  /* secondary lines, buttons, code */
+    --text-15: 15px;  /* body, table cells, inputs */
+    --text-18: 18px;  /* section titles, figure values */
+    --text-24: 24px;  /* the PLC's name, page titles */
+    --text-state: 44px; /* the one state word; 36px on a phone, 96px in the field display */
+    --text-state-compact: var(--text-state);
+    --text-figure: var(--text-18); /* cycle figures under the state word */
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-strong: 600;
+    --leading: 1.45;
+    --leading-tight: 1.15;
+
+    /* Space: a 4 px grid */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+    --space-8: 64px;
+
+    /* Shape */
+    --radius-control: 6px;  /* buttons, inputs, selects, segmented controls */
+    --radius-container: 0;  /* sections, dialogs, the editor: none */
+    --control-height: 32px; /* 44px under (pointer: coarse), 48px in the field display */
+    --target: 32px;         /* the smallest thing a finger may have to hit; 44px on touch */
+    --label-column: 176px;  /* left column of label/value rows */
+    --page-max: 1200px;
+    --gutter: 48px;         /* 16px on a phone */
+
+    /* Neutrals */
+    --page: light-dark(#fafafa, #000000);
+    --surface: light-dark(#ffffff, #0e0e0e);     /* inputs, the editor, dialogs, menus */
+    --ink: light-dark(#111111, #ededed);
+    --ink-2: light-dark(#6b6b6b, #8f8f8f);       /* secondary text, labels, units */
+    --ink-3: light-dark(#8c8c8c, #6a6a6a);       /* placeholders and disabled text only */
+    --rule: light-dark(#e6e6e6, #1f1f1f);        /* hairlines between rows and sections */
+    --rule-strong: light-dark(#cfcfcf, #3a3a3a); /* control borders */
+    --hover: light-dark(#f2f2f2, #161616);
+    --scrim: light-dark(rgb(0 0 0 / 0.28), rgb(0 0 0 / 0.6));
+
+    /* State: the only colours in the panel */
+    --state-run: light-dark(#1f883d, #3fb950);   /* Running, Up, link OK */
+    --state-attn: light-dark(#9a6700, #d29922);  /* Forced, exceeded cycles, not secured */
+    --state-fault: light-dark(#cf222e, #f85149); /* Fault, a problem in the program, a link down (BF) */
+    --state-off: light-dark(#6b6b6b, #8f8f8f);   /* Stopped, Offline, unknown */
+
+    /* The primary action is ink, not a brand colour */
+    --primary-bg: light-dark(#111111, #ededed);
+    --primary-ink: light-dark(#ffffff, #000000);
+    --focus: light-dark(#111111, #ededed);
+
+    /* The controller drawing (Overview). Hardware colours, flat, no gloss. */
+    --dev-front: light-dark(#ebebe8, #171717);
+    --dev-band: light-dark(#d8d8d4, #101010);
+    --dev-edge: light-dark(#a9a9a4, #3a3a3a);
+    --dev-hole: light-dark(#3a3a38, #000000);
+    --dev-label: light-dark(#ffffff, #232323);
+    --dev-print: light-dark(#4d4d4a, #8f8f8f);
+    --led-off: light-dark(#c4c4bf, #2c2c2c);
+    --led-green: light-dark(#2da44e, #3fb950);
+    --led-amber: light-dark(#d4a015, #d29922);
+    --led-red: light-dark(#e5413b, #f85149);
+    --meter-track: light-dark(#e2e2e2, #262626);
+    --blink: 500ms; /* ERROR and STARTING flash at 2 Hz; BF is steady */
+
+    /* Motion: LEDs blink (above); live values fade; nothing else moves */
+    --fade: 150ms;
+}
+
+/* This browser's choice wins over the system (Settings, Display) */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@media (max-width: 640px) {
+    :root {
+        --gutter: 16px;
+        --text-state: 36px;
+    }
+}
+
+@media (pointer: coarse) {
+    :root { --control-height: 44px; --target: 44px; }
+}
+
+/* Field display: a 10-inch touchscreen in the cabinet door, 1280 × 800, read from 2 m.
+   Set by opening the panel with ?field (a kiosk URL), never guessed from the screen. */
+:root[data-display="field"] {
+    --text-12: 14px;
+    --text-13: 15px;
+    --text-15: 17px;
+    --text-18: 20px;
+    --text-24: 28px;
+    --text-state: 96px;         /* Overview: cap height about 10 mm on a 10-inch panel */
+    --text-state-compact: 72px; /* the other tabs, where it stays on screen */
+    --text-figure: 26px;
+    --control-height: 48px;
+    --target: 48px;
+    --gutter: 24px;
+    --label-column: 200px;
+    --page-max: 1232px;
+}

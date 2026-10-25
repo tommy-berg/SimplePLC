@@ -1,0 +1,192 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (GCC)
+            os: ubuntu-24.04
+            cmake: -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
+            exe: build/simpleplc
+          - name: Linux (Clang)
+            os: ubuntu-24.04
+            cmake: -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER=clang-18
+            exe: build/simpleplc
+          - name: macOS
+            os: macos-14
+            cmake: ""
+            exe: build/simpleplc
+          - name: Windows
+            os: windows-2022
+            cmake: -DSIMPLEPLC_STATIC=ON
+            exe: build/Release/simpleplc.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache open62541 source
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/open62541-src
+          key: open62541-v1.5.9-src
+
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSIMPLEPLC_FETCH_OPEN62541=ON ${{ matrix.cmake }}
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Examples compile
+        shell: bash
+        run: |
+          for dir in examples/*/; do
+            for f in "$dir"*.st; do "./${{ matrix.exe }}" check "$f" --tags "${dir}plc.json"; done
+          done
+
+      # The tank example: level is a float32 in holding registers 3-4 (high word first), pump_run is
+      # coil 0, and the program's first cycle sets start_level 30 and stop_level 80. A level written
+      # through the API must read back over raw Modbus TCP, and the program must start the pump at
+      # 42.5 and stop it at 90. Port 502 needs rights the runner does not have: the PLC falls back to
+      # a free port and the API says which.
+      - name: Smoke test
+        shell: bash
+        env:
+          SIMPLEPLC_TOKEN: ci-token-0123456789abcdef
+          SIMPLEPLC_WEB_PORT: "18080"
+          SIMPLEPLC_ID: plc1
+          SIMPLEPLC_EXAMPLE: tank
+        run: |
+          mkdir -p smoke && cd smoke
+          "../${{ matrix.exe }}" --data data > out.txt 2> err.txt &
+          python3 - <<'EOF'
+          import json, os, socket, struct, time, urllib.request
+
+          WEB = int(os.environ["SIMPLEPLC_WEB_PORT"])
+          TOKEN = os.environ["SIMPLEPLC_TOKEN"]
+
+          def call(path, body=None, method="GET"):
+              req = urllib.request.Request(f"http://127.0.0.1:{WEB}/api/v1" + path, method=method,
+                                           data=None if body is None else json.dumps(body).encode(),
+                                           headers={"Authorization": "Bearer " + TOKEN, "Content-Type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=5))
+
+          for _ in range(100):
+              try:
+                  status = call("/status")
+                  break
+              except OSError:
+                  time.sleep(0.2)
+          else:
+              raise SystemExit("SimplePLC did not start:\n" + open("out.txt").read() + open("err.txt").read())
+          print("status", status)
+          plc = call("/plcs/plc1")
+          assert plc["running"], plc
+          port = plc["modbus"]["port"]
+
+          def modbus(fc, address, count):
+              """One Modbus TCP request to the PLC; returns the PDU after the function code."""
+              with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+                  s.sendall(struct.pack(">HHHBBHH", 1, 0, 6, 1, fc, address, count))
+                  reply = s.recv(64)
+              assert reply[7] == fc, f"exception from the PLC: {reply.hex()}"
+              return reply[8:]
+
+          def coil(address):
+              return bool(modbus(1, address, 1)[1] & 1)
+
+          call("/plcs/plc1/values", {"level": 42.5}, "PUT")
+          registers = modbus(3, 3, 2)
+          assert registers[0] == 4, registers
+          level = struct.unpack(">f", registers[1:5])[0]
+          print(f"Modbus port {port}: holding registers 3-4 = {level}")
+          assert level == 42.5, level
+
+          for want, level in [(True, 42.5), (False, 90.0)]:
+              call("/plcs/plc1/values", {"level": level}, "PUT")
+              for _ in range(30):
+                  if coil(0) is want:
+                      break
+                  time.sleep(0.1)
+              else:
+                  raise SystemExit(f"pump_run is not {want} with level {level}: {call('/plcs/plc1/values')}")
+              print(f"level {level}: pump_run (coil 0) is {want}")
+
+          with socket.create_connection(("127.0.0.1", plc["opcua"]["port"]), timeout=5):
+              print("OPC UA port", plc["opcua"]["port"], "accepts connections")
+          EOF
+          cat out.txt
+
+      - name: Stop
+        if: always()
+        shell: bash
+        run: |
+          pkill -INT simpleplc 2>/dev/null || taskkill //IM simpleplc.exe //F 2>/dev/null || true
+          sleep 2
+          cat smoke/err.txt 2>/dev/null || true
+
+  network:
+    name: Two PLC containers and a fleet
+    runs-on: ubuntu-24.04
+    env:
+      SIMPLEPLC_TOKEN: ci-token-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t simpleplc:ci .
+      - name: Start a tank PLC, a master that polls it and a fleet
+        run: |
+          docker network create plant
+          docker run -d --name tank --hostname tank --network plant -e SIMPLEPLC_TOKEN -e SIMPLEPLC_EXAMPLE=tank simpleplc:ci
+          docker run -d --name alarms --hostname alarms --network plant -e SIMPLEPLC_TOKEN -e SIMPLEPLC_EXAMPLE=remote-io simpleplc:ci
+          docker run -d --name fleet --network plant -p 127.0.0.1:8080:8080 -e SIMPLEPLC_TOKEN -e SIMPLEPLC_DEVICES=tank,alarms simpleplc:ci fleet
+      - name: Check the link through the fleet
+        run: |
+          python3 - <<'EOF'
+          import json, time, urllib.request
+
+          def call(path, body=None, method="GET"):
+              req = urllib.request.Request("http://127.0.0.1:8080/api/v1" + path, method=method,
+                                           data=None if body is None else json.dumps(body).encode(),
+                                           headers={"Authorization": "Bearer ci-token-0123456789abcdef",
+                                                    "Content-Type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=5))
+
+          for _ in range(100):
+              try:
+                  if sum(p.get("online", False) for p in call("/plcs")) == 2:
+                      break
+              except OSError:
+                  pass
+              time.sleep(0.3)
+          else:
+              raise SystemExit(f"devices not online: {call('/plcs')}")
+          links = {p["id"]: sorted(f"{l['host']}:{l['port']}" for l in p["modbus"]["links"]) for p in call("/plcs")}
+          assert links == {"tank": [], "alarms": ["tank:502"]}, links
+          for level, alarm in [(42.5, False), (90.0, True)]:  # alarm_level is 85
+              call("/plcs/tank/values", {"level": level}, "PUT")
+              for _ in range(50):
+                  v = call("/plcs/alarms/values")
+                  if v["link_ok"] and v["remote_level"] == level and v["level_alarm"] is alarm:
+                      break
+                  time.sleep(0.2)
+              else:
+                  raise SystemExit(f"level {level} did not reach the master: {v}")
+          print("master and slave:", links)
+          EOF
+      - name: Logs
+        if: always()
+        run: for c in tank alarms fleet; do echo "== $c"; docker logs "$c" 2>&1 | tail -40; done

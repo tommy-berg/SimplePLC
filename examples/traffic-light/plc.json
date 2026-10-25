@@ -1,0 +1,16 @@
+{
+  "title": "Traffic light",
+  "description": "A traffic light with a pedestrian button: a state machine with an enumeration and TON timers. On a fault, red is on and everything else off.",
+  "tasks": [
+    {"name": "main", "program": "main", "cycle_ms": 100}
+  ],
+  "tags": [
+    {"name": "red", "area": "coil", "address": 0, "type": "bool", "substitute": true, "description": "Red light"},
+    {"name": "yellow", "area": "coil", "address": 1, "type": "bool", "substitute": false, "description": "Yellow light"},
+    {"name": "green", "area": "coil", "address": 2, "type": "bool", "substitute": false, "description": "Green light"},
+    {"name": "walk", "area": "coil", "address": 3, "type": "bool", "substitute": false, "description": "Pedestrian walk signal"},
+    {"name": "button", "area": "coil", "address": 4, "type": "bool", "description": "Pedestrian button (write true to press)"},
+    {"name": "phase", "area": "holding_register", "address": 0, "type": "uint16", "description": "0 green, 1 yellow, 2 red, 3 red+walk, 4 red+yellow"},
+    {"name": "green_ms", "area": "holding_register", "address": 1, "type": "uint16", "description": "Minimum green time (ms)"}
+  ]
+}

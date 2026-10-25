@@ -1,0 +1,11 @@
+{
+  "title": "Factory I/O: conveyor (From A to B)",
+  "description": "Controls the conveyor of the Factory I/O scene 'From A to B'. Factory I/O connects as Modbus TCP client: it writes its sensors to coils and reads its actuators from discrete inputs.",
+  "tasks": [
+    {"name": "main", "program": "main", "cycle_ms": 50}
+  ],
+  "tags": [
+    {"name": "box_at_end", "area": "coil", "address": 0, "type": "bool", "description": "Sensor at the end of the conveyor (written by Factory I/O)"},
+    {"name": "conveyor", "area": "discrete_input", "address": 0, "type": "bool", "substitute": false, "description": "Conveyor motor (read by Factory I/O)"}
+  ]
+}

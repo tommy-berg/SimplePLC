@@ -1,0 +1,15 @@
+# What the image build does not need. Kept: src/, cmake/, third_party/, examples/*/plc.json and
+# *.st (embedded in the binary), docs/*.md (the panel's Help page), LICENSE, THIRD_PARTY_LICENSES.md.
+.git
+.github
+.claude
+build*
+out
+test_harness
+plan
+CLAUDE.md
+simpleplc-data
+simpleplc-fleet
+docs/*.png
+examples/*/*.png
+*.log

@@ -1,39 +1,24 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+# Build output
+/build*/
+/out/
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
+*.a
+*.lib
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
 *.exe
-*.out
-*.app
+compile_commands.json
 
-# CMake build directory
-/build/
+# Data directories created by running SimplePLC from the source tree
+simpleplc-data/
+simpleplc-fleet/
 
-# Other folders
-/FactoryIO_experiments/
-/CMakeFiles/
+# Editors and OS
+.DS_Store
+.idea/
+*.swp
+
+# Python
+__pycache__/

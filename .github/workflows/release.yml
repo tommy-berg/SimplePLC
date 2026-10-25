@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }} (static)
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+          - arch: armv7       # Raspberry Pi OS 32-bit; built under QEMU, slow but once per release
+            runner: ubuntu-24.04
+            platform: linux/arm/v7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'armv7'
+      - name: Build in Alpine (musl, fully static)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} -v "$PWD":/src -w /src alpine:3.20 sh -c '
+            apk add --no-cache build-base cmake git python3 linux-headers file &&
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSIMPLEPLC_STATIC=ON -DSIMPLEPLC_FETCH_OPEN62541=ON &&
+            cmake --build build -j"$(nproc)" &&
+            strip build/simpleplc &&
+            file build/simpleplc | grep -q "statically linked" &&
+            ./build/simpleplc --version'
+          cp build/simpleplc simpleplc-linux-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simpleplc-linux-${{ matrix.arch }}
+          path: simpleplc-linux-${{ matrix.arch }}
+
+  macos:
+    name: macOS (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build arm64 + x86_64
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSIMPLEPLC_FETCH_OPEN62541=ON \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
+          cmake --build build --parallel 4
+          strip build/simpleplc
+          lipo -info build/simpleplc
+          ./build/simpleplc --version
+          cp build/simpleplc simpleplc-macos-universal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simpleplc-macos-universal
+          path: simpleplc-macos-universal
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (static runtime)
+        shell: bash
+        run: |
+          cmake -S . -B build -DSIMPLEPLC_FETCH_OPEN62541=ON -DSIMPLEPLC_STATIC=ON
+          cmake --build build --config Release --parallel 4
+          ./build/Release/simpleplc.exe --version
+          cp build/Release/simpleplc.exe simpleplc-windows-x86_64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simpleplc-windows-x86_64
+          path: simpleplc-windows-x86_64.exe
+
+  publish:
+    name: GitHub release
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum simpleplc-* > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  docker:
+    name: Container image
+    needs: [linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tags
+        id: tags
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/simpleplc"
+          echo "list=${image}:${version},${image}:latest" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.tags.outputs.list }}

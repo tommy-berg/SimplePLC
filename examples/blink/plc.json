@@ -1,0 +1,13 @@
+{
+  "title": "Blink",
+  "description": "The smallest useful program: a lamp that blinks at an adjustable rate and counts its blinks.",
+  "tasks": [
+    {"name": "main", "program": "main", "cycle_ms": 50}
+  ],
+  "tags": [
+    {"name": "lamp", "area": "coil", "address": 0, "type": "bool", "substitute": false, "description": "Blinking lamp"},
+    {"name": "enable", "area": "coil", "address": 1, "type": "bool", "description": "Blinking on/off"},
+    {"name": "blink_ms", "area": "holding_register", "address": 0, "type": "uint16", "description": "On and off time (ms)"},
+    {"name": "blinks", "area": "holding_register", "address": 1, "type": "uint16", "description": "Number of blinks"}
+  ]
+}

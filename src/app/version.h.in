@@ -1,0 +1,5 @@
+#pragma once
+
+namespace simpleplc {
+inline constexpr const char* kVersion = "@SIMPLEPLC_VERSION@";
+}  // namespace simpleplc

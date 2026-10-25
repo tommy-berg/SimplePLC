@@ -1,0 +1,17 @@
+{
+  "title": "Tank level control",
+  "description": "Keeps a tank's level between start_level and stop_level with a fill pump, and stops the pump at the high level switch. The level and the switch come from the field: a level transmitter and a switch written over Modbus by a remote I/O module or a link, or by a simulator such as Factory I/O while testing.",
+  "tasks": [
+    {"name": "main", "program": "main", "cycle_ms": 100}
+  ],
+  "tags": [
+    {"name": "pump_run", "area": "coil", "address": 0, "type": "bool", "substitute": false, "description": "Fill pump running (off at STOP)"},
+    {"name": "drain_open", "area": "coil", "address": 1, "type": "bool", "description": "Drain valve open (operator)"},
+    {"name": "auto_mode", "area": "coil", "address": 2, "type": "bool", "description": "Automatic level control on"},
+    {"name": "high_alarm", "area": "coil", "address": 3, "type": "bool", "description": "High level switch (from the field)"},
+    {"name": "start_level", "area": "holding_register", "address": 0, "type": "uint16", "description": "Pump starts at or below this level (%)"},
+    {"name": "stop_level", "area": "holding_register", "address": 1, "type": "uint16", "description": "Pump stops at or above this level (%)"},
+    {"name": "pump_starts", "area": "holding_register", "address": 2, "type": "uint16", "description": "Number of pump starts"},
+    {"name": "level", "area": "holding_register", "address": 3, "type": "float32", "description": "Tank level (%) from the level transmitter (written by a remote I/O module, a link or a simulator)"}
+  ]
+}

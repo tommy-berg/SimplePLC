@@ -1,0 +1,17 @@
+{
+  "title": "Remote I/O over Modbus",
+  "description": "This PLC is a Modbus TCP client: its link reads the level of another PLC (a device named tank running the tank example) every 200 ms and the program raises an alarm above alarm_level. No communication code: the link is configuration.",
+  "tasks": [
+    {"name": "main", "program": "main", "cycle_ms": 100}
+  ],
+  "tags": [
+    {"name": "link_ok", "area": "discrete_input", "address": 0, "type": "bool", "description": "The tank PLC answers (set by the link)"},
+    {"name": "level_alarm", "area": "discrete_input", "address": 1, "type": "bool", "description": "Remote level above alarm_level"},
+    {"name": "link_alarm", "area": "discrete_input", "address": 2, "type": "bool", "description": "The tank PLC does not answer"},
+    {"name": "alarm_level", "area": "holding_register", "address": 0, "type": "uint16", "description": "Alarm limit (%)"},
+    {"name": "remote_level", "area": "input_register", "address": 0, "type": "float32", "description": "Level read from the tank PLC's holding registers 3-4 (%)"}
+  ],
+  "links": [
+    {"name": "tank", "host": "tank", "port": 502, "unit": 1, "period_ms": 200, "timeout_ms": 150, "status_tag": "link_ok", "read": [{"tag": "remote_level", "area": "holding_register", "address": 3}], "write": []}
+  ]
+}
