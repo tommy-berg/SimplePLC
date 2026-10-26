@@ -1,0 +1,16 @@
+# Pull requests for newer GitHub actions (Grype comes with anchore/scan-action) and for a newer
+# Alpine release of the Dockerfile's toolchain, which the release binaries use too. The vendored
+# components and open62541 are compared with upstream by .github/workflows/security.yml.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

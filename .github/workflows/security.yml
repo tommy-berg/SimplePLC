@@ -1,0 +1,96 @@
+name: Security
+
+# The SBOM of a release build, checked every week against the vulnerability databases (Grype;
+# security/vex.json says which findings do not apply, and why) and against the newest upstream
+# releases. A finding opens an issue, a change in the findings updates it, and the issue is closed
+# when they are gone. Pull requests for the GitHub actions and the Alpine release come from
+# Dependabot (.github/dependabot.yml).
+on:
+  schedule:
+    - cron: "23 5 * * 1"   # Mondays 05:23 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - CMakeLists.txt
+      - Dockerfile
+      - third_party/**
+      - src/web/assets/vendor/**
+      - security/**
+      - .github/workflows/security.yml
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  vulnerabilities:
+    name: Known vulnerabilities
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: SBOM of a release build
+        run: |
+          docker build --target toolchain -t simpleplc-toolchain .
+          docker run --rm -v "$PWD":/src -w /src simpleplc-toolchain \
+            python3 security/sbom.py generate --toolchain -o sbom.cdx.json
+      - uses: anchore/scan-action@v7
+        with:
+          sbom: sbom.cdx.json
+          vex: security/vex.json
+          fail-build: false
+          output-format: json
+          output-file: grype.json
+      # Medium and above is a finding: a PLC is reached from the plant network
+      - name: Report
+        run: |
+          jq -r '.matches[] | select(.vulnerability.severity | IN("Medium", "High", "Critical"))
+                 | "| \(.vulnerability.id) | \(.vulnerability.severity) | \(.artifact.name) \(.artifact.version) | \((.vulnerability.fix.versions // []) | join(", ")) |"' \
+            grype.json | sort -u > findings.txt
+          title="Security: known vulnerabilities in a component"
+          if [ ! -s findings.txt ]; then
+            echo "No known vulnerabilities of medium severity or higher." >> "$GITHUB_STEP_SUMMARY"
+            security/issue.sh close "$title"
+            exit 0
+          fi
+          {
+            echo "Grype finds these in the components of a release build (\`security/sbom.py generate --toolchain\`):"
+            echo
+            echo "| Vulnerability | Severity | Component | Fixed in |"
+            echo "|---|---|---|---|"
+            cat findings.txt
+            echo
+            echo "For each: update the component, or, if SimplePLC is not affected, add a statement to \`security/vex.json\` that says why."
+          } > body.md
+          cat body.md >> "$GITHUB_STEP_SUMMARY"
+          security/issue.sh open "$title" body.md
+          exit 1
+
+  updates:
+    name: Newer upstream releases
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare with upstream
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          status=0
+          python3 security/sbom.py outdated > table.md || status=$?
+          cat table.md >> "$GITHUB_STEP_SUMMARY"
+          title="Dependencies: newer upstream releases"
+          case $status in
+            0) security/issue.sh close "$title" ;;
+            2) {
+                 echo "Components that have newer upstream releases, or an Alpine release whose support has ended:"
+                 echo
+                 cat table.md
+                 echo
+                 echo "Update each in a commit of its own and run the full test harness, \`linux.sh\` included."
+               } > body.md
+               security/issue.sh open "$title" body.md ;;
+            *) exit "$status" ;;
+          esac

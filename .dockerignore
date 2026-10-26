@@ -6,6 +6,7 @@
 build*
 out
 test_harness
+security
 plan
 CLAUDE.md
 simpleplc-data

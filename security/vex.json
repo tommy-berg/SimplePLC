@@ -1,0 +1,27 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/tommy-berg/SimplePLC/blob/main/security/vex.json",
+  "author": "SimplePLC",
+  "timestamp": "2026-10-26T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "CVE-2026-40200" },
+      "products": [
+        { "@id": "pkg:generic/musl-libm@1.2.6?download_url=https://musl.libc.org/releases/musl-1.2.6.tar.gz" }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "The flaw is in musl's qsort (src/stdlib/qsort.c). third_party/musl-math holds only musl's double-precision maths functions; qsort is not among them. The musl C library that is linked is Alpine's package, which carries the fix."
+    },
+    {
+      "vulnerability": { "name": "CVE-2026-6042" },
+      "products": [
+        { "@id": "pkg:generic/musl-libm@1.2.6?download_url=https://musl.libc.org/releases/musl-1.2.6.tar.gz" }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "The flaw is in musl's iconv GB18030 decoder (src/locale/iconv.c). third_party/musl-math holds only musl's double-precision maths functions; iconv is not among them. The musl C library that is linked is Alpine's package, which carries the fix."
+    }
+  ]
+}

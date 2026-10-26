@@ -9,6 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  sbom:
+    name: SBOM sources agree
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 security/sbom.py check
+
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

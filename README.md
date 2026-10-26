@@ -26,7 +26,7 @@ PLCs talk Modbus TCP to each other, and a **fleet** gives one panel and one agen
 - **Online change.** Saving a program replaces the running one between two cycles and keeps the values of its variables
 - **Safe on failure.** Run-time errors stop the PLC in FAULT with the line, and outputs get their substitute values
 - **Made for agents.** Every operation is an MCP tool: setting up a PLC, tags, programs, forcing, logs
-- **Small.** One static Linux binary for x86-64, ARM64 and 32-bit Raspberry Pi OS, and an 11 MB container image
+- **Small.** One static Linux binary for x86-64, ARM64 and 32-bit Raspberry Pi OS, and a 13 MB container image
 
 ---
 
@@ -248,6 +248,14 @@ its `--device` devices with `SIMPLEPLC_DEVICE_TOKEN` (default: its own `SIMPLEPL
   the bytecode is verified before it runs.
 - **Fleet:** a fleet holds an administrator token for every device, so treat it like the
   engineering station it is.
+- **Components:** releases after 2.0.0 include an SBOM (CycloneDX) for each binary and for the image,
+  naming every component built in with its exact version, the linked C and C++ runtime included.
+  Every week CI checks them for known vulnerabilities ([`security/`](security/)).
+- **Verify a download:** `gh attestation verify simpleplc-linux-arm64 --repo tommy-berg/SimplePLC`
+  shows that GitHub Actions built it from this repository; add
+  `--predicate-type https://cyclonedx.org/bom` to check its SBOM. For the image:
+  `gh attestation verify oci://tommyhbe/simpleplc:<version> --repo tommy-berg/SimplePLC`.
+- **Found a vulnerability?** Report it privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## 🛠️ Build from source
 

@@ -1,6 +1,5 @@
 # One SimplePLC = one PLC: a static binary on an empty image, for amd64, arm64 and 32-bit ARM
-# (Raspberry Pi OS 32-bit: linux/arm/v7). The amd64 image is 11.8 MB (3.3 MB compressed), the
-# arm/v7 image 8.9 MB.
+# (Raspberry Pi OS 32-bit: linux/arm/v7). The amd64 image is 13.0 MB (3.6 MB compressed).
 #   docker build -t simpleplc .
 #   docker run -p 8080:8080 -p 502:502 -p 4840:4840 -v plc1:/data simpleplc
 # Several PLCs on one network, with a fleet for the panel and agents: README.md, "A network of PLCs".
@@ -8,7 +7,7 @@
 # name), SIMPLEPLC_EXAMPLE (default none: a blank PLC; or an example such as tank), SIMPLEPLC_TOKEN
 # (an administrator API token for scripts and agents, never stored). The setup code for the first
 # panel account is printed to the container's log.
-FROM alpine:3.20 AS toolchain
+FROM alpine:3.24 AS toolchain
 RUN apk add --no-cache build-base cmake git python3 linux-headers
 
 # open62541 changes rarely: its own stage, so a change to SimplePLC does not rebuild it.
