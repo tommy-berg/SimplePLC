@@ -82,6 +82,7 @@ const std::vector<StdSpec>& stdSpecs() {
         {"REPLACE", StdFn::Replace, {"IN1", "IN2", "L", "P"}}, {"FIND", StdFn::Find, {"IN1", "IN2"}},
         {"ATAN2", StdFn::Atan2, {"Y", "X"}},
         {"FIRST_CYCLE", StdFn::FirstCycle, {}},
+        {"TIME", StdFn::Time, {}}, {"LTIME", StdFn::LTime, {}},
         {"__NOW", StdFn::Now, {}},
     };
     return specs;
@@ -507,7 +508,7 @@ private:
         Value v;
         if (!evaluateConstant(*e, v)) {
             d_.error("E_TYPE", e->loc, std::format("{} must be a constant", what),
-                     "use a literal or a VAR CONSTANT declared above");
+                     "use a literal or a VAR CONSTANT");
             return false;
         }
         if (isUnsigned(v.kind)) {
@@ -535,7 +536,15 @@ private:
         }
         declaring_.insert(&pou);
         Pou& a = *pou.ast;
-        int order = 0;
+        DeclState& state = declStates_[&pou];
+        // A VAR CONSTANT may come below its use (TIA Portal keeps a block's constants last, CODESYS takes
+        // either order): an array bound or initial value that names it declares it there
+        for (VarSection& sec : a.sections) {
+            if (sec.kind != VarKind::Var || !sec.constant) continue;
+            for (VarDecl& decl : sec.decls) {
+                for (const DeclName& n : decl.names) state.constants.emplace(n.upper, std::pair{&sec, &decl});
+            }
+        }
 
         if (pou.kind == PouKind::Function) {
             pou.result = p_.types.voidType();
@@ -546,6 +555,7 @@ private:
                     rt = nullptr;
                 }
                 if (rt) pou.result = rt;
+                else failed_.insert({&pou, pou.upper});  // reported; its calls and result assignments stay quiet
             }
             if (pou.result->kind != TypeKind::Void) {
                 Symbol& r = pou.symbols.emplace_back();
@@ -555,7 +565,7 @@ private:
                 r.kind = SymKind::Result;
                 r.type = pou.result;
                 r.storage = Storage::Frame;
-                r.order = order++;
+                r.order = state.order++;
                 pou.byName[r.upper] = &r;
                 pou.resultSymbol = &r;
             }
@@ -595,123 +605,135 @@ private:
                 d_.error("E_SYNTAX", sec.loc, "a variable cannot be both CONSTANT and RETAIN");
             }
             for (VarDecl& decl : sec.decls) {
-                const Type* t = decl.type ? buildType(*decl.type, &pou, decl.names.front().spelled) : nullptr;
-                if (t && pou.kind == PouKind::Function && holdsInstance(t)) {
-                    d_.error("E_FB_IN_FUNCTION", decl.type->loc,
-                             std::format("a FUNCTION cannot hold function block instances ({}): functions have no state",
-                                         t->name),
-                             "make it a FUNCTION_BLOCK, or declare the instances in the caller");
-                    t = nullptr;
-                }
-                if (t && t->kind == TypeKind::FunctionBlock) {
-                    if (pou.kind == PouKind::Function) {
-                        d_.error("E_FB_IN_FUNCTION", decl.type->loc,
-                                 std::format("a FUNCTION cannot hold an instance of '{}': functions have no state",
-                                             t->name),
-                                 "make it a FUNCTION_BLOCK, or declare the instance in the caller");
-                        t = nullptr;
-                    } else if (kind != SymKind::Var) {
-                        d_.error("E_NOT_SUPPORTED", decl.type->loc,
-                                 std::format("a function block instance in {}", varKindKeyword(sec.kind)),
-                                 "declare instances in VAR");
-                        t = nullptr;
-                    }
-                }
-                if (t && t->kind == TypeKind::Array && baseOf(t->element)->kind == TypeKind::FunctionBlock &&
-                    kind != SymKind::Var) {
-                    d_.error("E_NOT_SUPPORTED", decl.type->loc, "arrays of function block instances outside VAR");
-                    t = nullptr;
-                }
-                if (t && kind == SymKind::External && !isElementary(baseOf(t)->kind)) {
-                    d_.error("E_BINDING", decl.type->loc,
-                             std::format("VAR_EXTERNAL binds a tag; {} is not a tag type", t->name));
-                    t = nullptr;
-                }
-                for (DeclName& n : decl.names) {
-                    // The standard library's own names (IN, PT, Q, S …) are local to its blocks: the
-                    // program's types, enumeration values and constants may use the same names
-                    const bool user = !pou.library;
-                    if (user && reserved(n.upper)) {
-                        d_.error("E_RESERVED", n.loc,
-                                 std::format("'{}' is the name of a standard type or function", n.spelled),
-                                 "choose another name");
-                        failed_.insert({&pou, n.upper});
-                        continue;
-                    } else if (user && (p_.findPou(n.upper) || p_.typeByName.count(n.upper))) {
-                        d_.error("E_DUPLICATE", n.loc,
-                                 std::format("'{}' is the name of a type, function or function block", n.spelled),
-                                 "choose another name");
-                        failed_.insert({&pou, n.upper});
-                        continue;
-                    }
-                    if (pou.byName.count(n.upper)) {
-                        d_.error("E_DUPLICATE", n.loc, std::format("'{}' is declared twice", n.spelled));
-                        continue;
-                    }
-                    if (user && globals_.find(n.upper)) {
-                        d_.error("E_DUPLICATE", n.loc, std::format("'{}' is a global constant", n.spelled),
-                                 "choose another name, so the two cannot be confused");
-                        failed_.insert({&pou, n.upper});
-                        continue;
-                    }
-                    if (const Type* et = user ? enumWithValue(n.upper) : nullptr) {
-                        d_.error("E_DUPLICATE", n.loc, std::format("'{}' is a value of the enumeration {}", n.spelled, et->name),
-                                 "choose another name, so the two cannot be confused");
-                        failed_.insert({&pou, n.upper});
-                        continue;
-                    }
-                    if (!t) {
-                        failed_.insert({&pou, n.upper});  // reported where it is declared; its uses stay quiet
-                        continue;
-                    }
-                    Symbol& s = pou.symbols.emplace_back();
-                    s.upper = n.upper;
-                    s.spelled = n.spelled;
-                    s.loc = n.loc;
-                    s.kind = kind;
-                    s.constant = sec.constant;
-                    s.retain = sec.retain;
-                    s.type = t;
-                    s.init = decl.init.get();
-                    s.decl = &decl;
-                    s.order = order++;
-                    if (kind == SymKind::External) {
-                        s.storage = Storage::Global;
-                        s.tag = n.spelled;
-                    }
-                    if (kind == SymKind::External && decl.init) {
-                        d_.error("E_SYNTAX", decl.init->loc, "VAR_EXTERNAL cannot have an initial value",
-                                 "the tag holds the value");
-                    }
-                    pou.byName[s.upper] = &s;
-                    if (kind == SymKind::Input) pou.inputs.push_back(&s);
-                    if (kind == SymKind::Output) pou.outputs.push_back(&s);
-                    if (kind == SymKind::InOut) pou.inOuts.push_back(&s);
-                    if (s.init && kind == SymKind::InOut) {
-                        d_.error("E_SYNTAX", s.init->loc, "VAR_IN_OUT cannot have an initial value");
-                        s.init = nullptr;
-                    }
-                    if (s.init) {
-                        Ctx ctx;
-                        ctx.pou = &pou;
-                        ctx.initializer = true;
-                        checkInitializer(*s.init, s.type, ctx);
-                        if (s.constant && kind == SymKind::Var && s.init->kind == Initializer::Kind::Expr && s.init->expr &&
-                            evaluateConstant(*s.init->expr, s.constValue)) {
-                            s.hasConstValue = true;
-                        }
-                    } else if (s.constant && kind == SymKind::Var && isElementary(baseOf(t)->kind)) {
-                        // VAR CONSTANT only: a VAR_EXTERNAL CONSTANT is a read-only view of a live tag, never a fixed value
-                        s.hasConstValue = true;
-                        s.constValue = defaultValue(t);
-                    }
-                }
+                if (state.done.count(&decl)) continue;  // a constant that a declaration above needed
+                state.inProgress.insert(&decl);
+                declareNames(pou, sec, decl, kind, state.order);
+                state.inProgress.erase(&decl);
+                state.done.insert(&decl);
             }
         }
         layout(pou);
         pou.checked = true;
         declaring_.erase(&pou);
+        declStates_.erase(&pou);
         return true;
+    }
+
+    /// Declares the names of one declaration of `pou` in section `sec` (symbols of `kind`).
+    void declareNames(PouInfo& pou, VarSection& sec, VarDecl& decl, SymKind kind, int& order) {
+        const Type* t = decl.type ? buildType(*decl.type, &pou, decl.names.front().spelled) : nullptr;
+        if (t && pou.kind == PouKind::Function && holdsInstance(t)) {
+            d_.error("E_FB_IN_FUNCTION", decl.type->loc,
+                     std::format("a FUNCTION cannot hold function block instances ({}): functions have no state",
+                                 t->name),
+                     "make it a FUNCTION_BLOCK, or declare the instances in the caller");
+            t = nullptr;
+        }
+        if (t && t->kind == TypeKind::FunctionBlock) {
+            if (pou.kind == PouKind::Function) {
+                d_.error("E_FB_IN_FUNCTION", decl.type->loc,
+                         std::format("a FUNCTION cannot hold an instance of '{}': functions have no state",
+                                     t->name),
+                         "make it a FUNCTION_BLOCK, or declare the instance in the caller");
+                t = nullptr;
+            } else if (kind != SymKind::Var) {
+                d_.error("E_NOT_SUPPORTED", decl.type->loc,
+                         std::format("a function block instance in {}", varKindKeyword(sec.kind)),
+                         "declare instances in VAR");
+                t = nullptr;
+            }
+        }
+        if (t && t->kind == TypeKind::Array && baseOf(t->element)->kind == TypeKind::FunctionBlock &&
+            kind != SymKind::Var) {
+            d_.error("E_NOT_SUPPORTED", decl.type->loc, "arrays of function block instances outside VAR");
+            t = nullptr;
+        }
+        if (t && kind == SymKind::External && !isElementary(baseOf(t)->kind)) {
+            d_.error("E_BINDING", decl.type->loc,
+                     std::format("VAR_EXTERNAL binds a tag; {} is not a tag type", t->name));
+            t = nullptr;
+        }
+        for (DeclName& n : decl.names) {
+            // The standard library's own names (IN, PT, Q, S …) are local to its blocks: the
+            // program's types, enumeration values and constants may use the same names
+            const bool user = !pou.library;
+            if (user && reserved(n.upper)) {
+                d_.error("E_RESERVED", n.loc,
+                         std::format("'{}' is the name of a standard type or function", n.spelled),
+                         "choose another name");
+                failed_.insert({&pou, n.upper});
+                continue;
+            } else if (user && p_.typeByName.count(n.upper)) {
+                // A variable may have the name of a function or function block (the variable is meant
+                // inside its block: a call has parentheses, an instance's type follows ':'), so a library
+                // that adds a block named like a variable breaks nothing; a type name in a declaration could be either
+                d_.error("E_DUPLICATE", n.loc, std::format("'{}' is the name of a type", n.spelled),
+                         "choose another name");
+                failed_.insert({&pou, n.upper});
+                continue;
+            }
+            if (pou.byName.count(n.upper)) {
+                d_.error("E_DUPLICATE", n.loc, std::format("'{}' is declared twice", n.spelled));
+                continue;
+            }
+            if (user && globals_.find(n.upper)) {
+                d_.error("E_DUPLICATE", n.loc, std::format("'{}' is a global constant", n.spelled),
+                         "choose another name, so the two cannot be confused");
+                failed_.insert({&pou, n.upper});
+                continue;
+            }
+            if (const Type* et = user ? enumWithValue(n.upper) : nullptr) {
+                d_.error("E_DUPLICATE", n.loc, std::format("'{}' is a value of the enumeration {}", n.spelled, et->name),
+                         "choose another name, so the two cannot be confused");
+                failed_.insert({&pou, n.upper});
+                continue;
+            }
+            if (!t) {
+                failed_.insert({&pou, n.upper});  // reported where it is declared; its uses stay quiet
+                continue;
+            }
+            Symbol& s = pou.symbols.emplace_back();
+            s.upper = n.upper;
+            s.spelled = n.spelled;
+            s.loc = n.loc;
+            s.kind = kind;
+            s.constant = sec.constant;
+            s.retain = sec.retain;
+            s.type = t;
+            s.init = decl.init.get();
+            s.decl = &decl;
+            s.order = order++;
+            if (kind == SymKind::External) {
+                s.storage = Storage::Global;
+                s.tag = n.spelled;
+            }
+            if (kind == SymKind::External && decl.init) {
+                d_.error("E_SYNTAX", decl.init->loc, "VAR_EXTERNAL cannot have an initial value",
+                         "the tag holds the value");
+            }
+            pou.byName[s.upper] = &s;
+            if (kind == SymKind::Input) pou.inputs.push_back(&s);
+            if (kind == SymKind::Output) pou.outputs.push_back(&s);
+            if (kind == SymKind::InOut) pou.inOuts.push_back(&s);
+            if (s.init && kind == SymKind::InOut) {
+                d_.error("E_SYNTAX", s.init->loc, "VAR_IN_OUT cannot have an initial value");
+                s.init = nullptr;
+            }
+            if (s.init) {
+                Ctx ctx;
+                ctx.pou = &pou;
+                ctx.initializer = true;
+                checkInitializer(*s.init, s.type, ctx);
+                if (s.constant && kind == SymKind::Var && s.init->kind == Initializer::Kind::Expr && s.init->expr &&
+                    evaluateConstant(*s.init->expr, s.constValue)) {
+                    s.hasConstValue = true;
+                }
+            } else if (s.constant && kind == SymKind::Var && isElementary(baseOf(t)->kind)) {
+                // VAR CONSTANT only: a VAR_EXTERNAL CONSTANT is a read-only view of a live tag, never a fixed value
+                s.hasConstValue = true;
+                s.constValue = defaultValue(t);
+            }
+        }
     }
 
     /// A function block instance, or an array (of arrays) of them.
@@ -2083,21 +2105,65 @@ private:
 
     // ── Names ──
 
+    /// Whether `pou` declares `upper` at all (the caller found no symbol yet, so: further down).
+    static bool declaredLater(const ast::Pou& pou, const std::string& upper) {
+        for (const VarSection& sec : pou.sections) {
+            for (const VarDecl& decl : sec.decls) {
+                for (const DeclName& d : decl.names) {
+                    if (d.upper == upper) return true;
+                }
+            }
+        }
+        return false;
+    }
+
     const Type* typeName(Name& n, const Type* expected, Ctx& ctx) {
         if (ctx.pou) {
             if (Symbol* s = ctx.pou->find(n.upper)) {
                 if (ctx.initializer && !(s->constant && s->hasConstValue)) {
+                    if (s->constant && s->kind == SymKind::Var && isElementary(baseOf(s->type)->kind)) {
+                        auto st = declStates_.find(ctx.pou);
+                        if (st != declStates_.end() && st->second.inProgress.count(s->decl)) {
+                            d_.error("E_TYPE", n.loc, std::format("the constant '{}' is defined through itself", n.spelled),
+                                     "give one of the constants a value that does not depend on the other");
+                            return nullptr;
+                        }
+                        if (s->init) return nullptr;  // its initial value has the error
+                    }
                     d_.error("E_TYPE", n.loc, std::format("'{}' is not a constant", n.spelled),
                              "initial values, array bounds and case labels need constants");
                     return nullptr;
                 }
                 n.symbol = s;
-                if (!ctx.initializer) s->used = true;
+                s->used = true;  // in an initial value or an array bound too: a constant counts as used there
                 if (s->constant && s->hasConstValue) {
                     n.isConstant = true;
                     n.constant = s->constValue;
                 }
                 return s->type;
+            }
+            // Its declaration has the error: the name means that variable, not a POU or type of the same name
+            if (failed_.count({ctx.pou, n.upper})) return nullptr;
+            if (ctx.initializer) {
+                if (auto st = declStates_.find(ctx.pou); st != declStates_.end()) {
+                    if (auto c = st->second.constants.find(n.upper); c != st->second.constants.end()) {
+                        auto [sec, decl] = c->second;
+                        if (st->second.inProgress.count(decl)) {
+                            d_.error("E_TYPE", n.loc, std::format("the constant '{}' is defined through itself", n.spelled),
+                                     "give one of the constants a value that does not depend on the other");
+                            failed_.insert({ctx.pou, n.upper});
+                            return nullptr;
+                        }
+                        if (!st->second.done.count(decl)) {  // declared below: declare it now, then use it
+                            DeclState& state = st->second;
+                            state.inProgress.insert(decl);
+                            declareNames(*ctx.pou, *sec, *decl, SymKind::Var, state.order);
+                            state.inProgress.erase(decl);
+                            state.done.insert(decl);
+                            return typeName(n, expected, ctx);
+                        }
+                    }
+                }
             }
         }
         if (Symbol* g = globals_.find(n.upper); g && g->hasConstValue) {
@@ -2165,7 +2231,11 @@ private:
                 }
             }
         }
-        if (ctx.pou && failed_.count({ctx.pou, n.upper})) return nullptr;  // its declaration has the error
+        if (ctx.initializer && ctx.pou && ctx.pou->ast && declaredLater(*ctx.pou->ast, n.upper)) {
+            d_.error("E_TYPE", n.loc, std::format("'{}' is not a constant", n.spelled),
+                     "initial values, array bounds and case labels need constants (VAR CONSTANT)");
+            return nullptr;
+        }
         d_.error("E_UNDECLARED", n.loc, std::format("'{}' is not declared", n.spelled), hint);
         return nullptr;
     }
@@ -2663,11 +2733,17 @@ private:
         bool ok = isElementary(fk) || fk == TypeKind::String;
         ok = ok && (isElementary(tk) || tk == TypeKind::String);
         if (ok && ((isReal(fk) && isBitString(tk)) || (isBitString(fk) && isReal(tk)))) {
+            // Ed. 3 defines only the same-width pairs (REAL ↔ DWORD, LREAL ↔ LWORD), as a copy of the bits
+            const TypeKind rk = isReal(fk) ? fk : tk, bk = isReal(fk) ? tk : fk;
+            const bool sameWidth = bk == (rk == TypeKind::Real ? TypeKind::DWord : TypeKind::LWord);
             d_.error("E_AMBIGUOUS", loc,
-                     std::format("{}: implementations disagree: IEC 61131-3 Ed. 3 copies the bits, others convert the value",
-                                 c.callee->as<Name>().spelled),
-                     isReal(fk) ? std::format("for the number, write {}_TO_UDINT(…) then UDINT_TO_{}(…)", fromT->name, toT->name)
-                                : std::format("for the number, write {}_TO_UDINT(…) then UDINT_TO_{}(…)", fromT->name, toT->name));
+                     sameWidth ? std::format("{}: implementations disagree: IEC 61131-3 Ed. 3 copies the bits, others convert the value",
+                                             c.callee->as<Name>().spelled)
+                               : std::format("{}: not defined by IEC 61131-3 (only {} ↔ {} copies the bits); implementations differ",
+                                             c.callee->as<Name>().spelled, isReal(fk) ? fromT->name : toT->name,
+                                             rk == TypeKind::Real ? "DWORD" : "LWORD"),
+                     std::format("for the number, write {0}_TO_{2}(…) then {2}_TO_{1}(…)", fromT->name, toT->name,
+                                 bk == TypeKind::LWord || rk == TypeKind::LReal ? "ULINT" : "UDINT"));
             return true;
         }
         if (ok && isSigned(fk) && isBitString(tk) && bitWidth(tk) > bitWidth(fk)) {
@@ -2688,7 +2764,15 @@ private:
                        "MatIEC/OpenPLC use seconds; CODESYS uses milliseconds as SimplePLC does");
         }
         if (!ok) {
-            d_.error("E_TYPE", loc, std::format("{} cannot be converted to {}", fromT->name, toT->name));
+            std::string hint;
+            if ((isDuration(fk) && isBitString(tk)) || (isBitString(fk) && isDuration(tk))) {
+                // The number in between says what the bits mean (milliseconds)
+                const TypeKind bits = isBitString(fk) ? fk : tk;
+                std::string_view num = bits == TypeKind::Byte ? "USINT" : bits == TypeKind::Word ? "UINT"
+                                   : bits == TypeKind::DWord ? "UDINT" : "ULINT";
+                hint = std::format("go through an unsigned integer: {}_TO_{}(…) then {}_TO_{}(…)", fromT->name, num, num, toT->name);
+            }
+            d_.error("E_TYPE", loc, std::format("{} cannot be converted to {}", fromT->name, toT->name), hint);
             return true;
         }
         auto conv = std::make_unique<ast::Convert>(loc, std::move(arg), false);
@@ -2724,6 +2808,7 @@ private:
             auto& n = c.callee->as<Name>();
             Symbol* s = ctx.pou ? ctx.pou->find(n.upper) : nullptr;
             if (s && s->kind == SymKind::Result) s = nullptr;  // F(…) inside F: a (recursive) call
+            if (!s && ctx.pou && failed_.count({ctx.pou, n.upper})) return nullptr;  // an instance whose declaration has the error
             if (!s) {
                 if (PouInfo* p = p_.findPou(n.upper)) {
                     if (p->kind == PouKind::Function) return typeUserCall(c, *p, ctx, statement, false);
@@ -2744,7 +2829,14 @@ private:
         if (!inst) return nullptr;
         const Type* b = baseOf(inst);
         if (b->kind != TypeKind::FunctionBlock) {
-            d_.error("E_CALL", c.loc, std::format("{} cannot be called: it is {}", describeExpr(*c.callee), inst->name));
+            std::string hint;
+            if (c.callee->kind == ExprKind::Name) {
+                const auto& n = c.callee->as<Name>();
+                if (const PouInfo* f = p_.findPou(n.upper); f && f->kind == PouKind::Function)
+                    hint = std::format("the variable '{}' hides the function {} in this block: rename the variable",
+                                       n.symbol ? n.symbol->spelled : n.spelled, f->spelled);
+            }
+            d_.error("E_CALL", c.loc, std::format("{} cannot be called: it is {}", describeExpr(*c.callee), inst->name), hint);
             return nullptr;
         }
         if (!statement) {
@@ -2791,6 +2883,7 @@ private:
             std::vector<Symbol*> params = pou.inputs;
             params.insert(params.end(), pou.inOuts.begin(), pou.inOuts.end());
             if (c.args.size() != params.size()) {
+                if (hasFailed(pou)) return nullptr;  // a parameter's declaration has the error
                 d_.error("E_CALL", c.loc,
                          std::format("{} takes {} input{} (VAR_INPUT then VAR_IN_OUT); {} given", pou.spelled,
                                      params.size(), params.size() == 1 ? "" : "s", c.args.size()),
@@ -2826,6 +2919,10 @@ private:
                     continue;
                 }
                 Symbol* p = pou.find(a.name);
+                if (!p && failed_.count({&pou, a.name})) {
+                    ok = false;  // the parameter's declaration has the error
+                    continue;
+                }
                 if (!p || (p->kind != SymKind::Input && p->kind != SymKind::Output && p->kind != SymKind::InOut)) {
                     d_.error("E_CALL", a.loc, std::format("{} has no parameter '{}'", pou.spelled, a.spelled),
                              suggestParam(pou, a.name));
@@ -2844,6 +2941,7 @@ private:
         if (!ok) return nullptr;
         if (block) return p_.types.voidType();
         if (!statement && pou.result->kind == TypeKind::Void) {
+            if (failed_.count({&pou, pou.upper})) return nullptr;  // its result type has the error
             d_.error("E_CALL", c.loc, std::format("{} returns no value", pou.spelled));
             return nullptr;
         }
@@ -3093,6 +3191,10 @@ private:
             }
             case StdFn::FirstCycle:
                 return p_.types.elementary(TypeKind::Bool);
+            case StdFn::Time:
+                return p_.types.elementary(TypeKind::Time);
+            case StdFn::LTime:
+                return p_.types.elementary(TypeKind::LTime);
             case StdFn::Expt: {
                 const Type* base = real1(*in[0]);
                 if (!base) return nullptr;
@@ -3242,8 +3344,22 @@ private:
     std::map<std::string, TypeDecl*> typeDecls_;
     std::set<std::string> standardBlocks_;  // names of the standard library's function blocks
     std::set<std::pair<PouInfo*, std::string>> failed_;  // variables whose declaration was refused
+    /// Whether a parameter or variable of `pou` was refused (its result type, filed under its own name, is not one).
+    bool hasFailed(PouInfo& pou) const {
+        for (auto it = failed_.lower_bound({&pou, std::string()}); it != failed_.end() && it->first == &pou; ++it) {
+            if (it->second != pou.upper) return true;
+        }
+        return false;
+    }
     std::set<std::string> inProgress_;
     std::set<PouInfo*> declaring_;
+    /// A POU being declared: its VAR CONSTANT declarations by name, which declarations are done or under way.
+    struct DeclState {
+        int order = 0;
+        std::map<std::string, std::pair<VarSection*, VarDecl*>> constants;
+        std::set<const VarDecl*> done, inProgress;
+    };
+    std::map<PouInfo*, DeclState> declStates_;
     std::map<std::pair<PouInfo*, PouInfo*>, SourceLoc> callLoc_;
     PouInfo globals_;  ///< VAR_GLOBAL CONSTANT
 };

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "app/config.h"
 #include "app/log.h"
 #include "core/process_image.h"
@@ -239,8 +241,9 @@ private:
     /// What STOP and FAULT share: the tasks stop, the substitute values go out, the identity says "stopped".
     void stopProgramsLocked();
     void writeSubstituteValues();
-    /// Writes `text` to retain.json unless it is what was written last; a failure is logged once, not every second.
-    void writeRetainedLocked(const std::string& text);
+    /// Writes retentive memory and the PLC's time to retain.json when the values changed since the last write,
+    /// or `always` (the PLC closes); a failure is logged once, not every second.
+    void writeRetainedLocked(nlohmann::json content, bool always);
     std::vector<std::string> taskNamesLocked() const;
     std::vector<TagDef> currentTagsLocked() const;
     std::vector<runtime::StoredFile> savedFiles() const;
@@ -283,6 +286,7 @@ private:
     // Retentive memory (mutex_): the text retain.json holds, when it was last considered, the failure already reported
     std::string retainWritten_;
     std::chrono::steady_clock::time_point retainSavedAt_{};
+    std::chrono::steady_clock::time_point timeOrigin_{};  ///< where the PLC's time is zero (see TaskOptions)
     std::string retainError_;
     // Taken first by everything that changes which program versions run (saves, deletes,
     // reconfiguration, open): one at a time, in order. Compiles run under it, not under mutex_

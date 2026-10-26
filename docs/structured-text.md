@@ -191,7 +191,10 @@ process stops; at power-up they are restored before the programs start. The tags
 STOP writes the substitute values, so a retained output that powers up in STOP gets its substitute
 value. A power cut loses at most the last second. A cold restart (API `restart`) and a setup clear
 retentive memory. A stored value whose tag or variable is gone, is no longer retentive or has
-another type is skipped and named in the log; the next write drops it. Everything else starts at 0
+another type is skipped and named in the log; the next write drops it. The PLC's time (`TIME()`, the
+timers) is kept with the values and goes on from them at power-up: it stands still while the PLC is
+off, so a timer in a `RETAIN` instance goes on from its elapsed time (a power cut loses at most the
+time since the last write). Everything else starts at 0
 or from its initial value: set other defaults in the first cycle (see the [cookbook](#cookbook)), or
 let an HMI or another device write them. On an SD card, keep retentive values to what changes
 seldom (setpoints, totals): a value that changes every cycle rewrites the file once a second.
@@ -345,16 +348,24 @@ link is the writer of its read tags and status tag.
   used as names of anything (variables, POUs, types, enumeration values, structure members):
   `E_RESERVED`. So are IEC words of features that SimplePLC does not support, for example
   `STEP`, `TASK`, `ON`, `ACTION`, `FROM`, `CLASS` (hint: `step_no`).
-- A name cannot shadow another: a variable named like a function block type (`valve : Valve`),
-  function, type, global constant or enumeration value is `E_DUPLICATE`, and so is an
+- A variable or parameter may have the name of a function or function block: inside its block
+  the name is the variable (`valve : Valve;` then `valve();` calls the instance; a variable `scale`
+  hides the function `Scale` there, and `Scale(2)` is `E_CALL`). So a library that adds a block
+  named like one of your variables breaks nothing. A variable named like a type, a global constant
+  or an enumeration value is `E_DUPLICATE`, because the bare name could mean either; so is an
   enumeration value named like a POU or a type.
 - The parameters of the standard blocks (`IN`, `Q`, `PT`, `ET`, `CLK`, `CV`, ...) are local to
   those blocks: use these names freely for variables, types or enumeration values.
 - Comments: `(* … *)`, `/* … */` and `// to the end of the line`. Comments do not nest: an
   opener inside a comment is `E_COMMENT`.
-- Pragmas `{ … }` are ignored with warning `W_PRAGMA`. Conditional compilation (`{IF …}`,
-  `{ELSIF}`, `{ELSE}`, `{END_IF}`, `{define}`, `{undefine}`) is `E_PRAGMA`, because ignoring it
-  would compile both branches.
+- Pragmas `{ … }` that only describe the code are ignored with warning `W_PRAGMA`: CODESYS and
+  TwinCAT `{attribute '…'}`, `{region …}`, `{endregion}`, `{info '…'}`, `{warning '…'}`, `{text …}`,
+  `{library …}`, `{messageguid …}`, and Siemens block attributes (`{S7_Optimized_Access := 'TRUE'}`).
+  Every other pragma is `E_PRAGMA`, because SimplePLC cannot tell what ignoring it would change:
+  conditional compilation (`{IF …}`, `{ELSIF}`, `{ELSE}`, `{END_IF}`, `{define}`, `{undefine}`) would
+  compile both branches, `{error '…'}` marks code that must not compile, and OpenPLC (MatIEC) copies
+  the text between `{ }` into its C program, usually to read the clock: write that in ST with
+  `TIME()`.
 
 <!-- wrap: body -->
 <!-- vars: a : INT; -->
@@ -385,6 +396,8 @@ a := 1;
 - Function block instances are declared in `VAR` only, never in a FUNCTION
   (`E_FB_IN_FUNCTION`) or a STRUCT. Arrays of instances are allowed in `VAR`.
 - Several names can share a declaration: `a, b, c : INT;`.
+- A `VAR CONSTANT` may be declared above or below the declarations that use it (TIA Portal keeps a
+  block's constants last). Constants defined through each other are `E_TYPE`.
 - A variable, constant or tag that no statement names warns `W_UNUSED`. Parameters of functions
   and blocks may go unused without a warning.
 
@@ -997,6 +1010,47 @@ program saved on an empty PLC), or that takes over no variable of the one it rep
 its first cycle has it TRUE. It is the same in every program, function
 and block of that cycle.
 
+`TIME()` (and `LTIME()`, as an `LTIME`) is the PLC's time at the start of the cycle, as CODESYS and
+TwinCAT name it: the time the standard timers measure with. It is the same everywhere in one cycle,
+in functions too, so the difference of two calls in two cycles is the time between them. It starts
+at 0 with a new setup or a cold restart; at power-up it goes on from the time that retentive memory
+kept, so it stands still while the PLC is off (see [retentive memory](#retentive-memory)). It is 64
+bits of nanoseconds: it does not wrap
+(292 years). Keep time stamps and differences in `TIME`; `TIME_TO_UDINT(TIME())` in milliseconds
+overflows after 49.7 days, which is a fault, not a wrap as in libraries written for 32-bit clocks.
+
+<!-- run: cycles=3 dt=T#100ms -->
+<!-- expect: W_TIME_UNIT -->
+<!-- assert: 3 dt=T#100ms -->
+```st
+FUNCTION_BLOCK Integrator      (* the area under x, at any cycle time *)
+VAR_INPUT
+    x : REAL;
+END_VAR
+VAR_OUTPUT
+    area : REAL;
+    dt : TIME;
+END_VAR
+VAR
+    last : TIME;
+END_VAR
+    dt := TIME() - last;
+    last := TIME();
+    IF NOT FIRST_CYCLE() THEN
+        area := area + x * TIME_TO_REAL(dt) / 1000.0;
+    END_IF;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    i : Integrator;
+    dt : TIME;
+END_VAR
+    i(x := 2.0);
+    dt := i.dt;
+END_PROGRAM
+```
+
 ## Standard function blocks
 
 All standard blocks are called with formal arguments. Timers use the cycle's time.
@@ -1066,7 +1120,7 @@ END_PROGRAM
 ## Extensions to IEC 61131-3
 
 Tags bound by `VAR_EXTERNAL`, file-level `VAR_GLOBAL CONSTANT`, library files,
-`FIRST_CYCLE()`, bit access `w.3`, the wider counters, and EN/ENO that undo a failed call.
+`FIRST_CYCLE()`, `TIME()` and `LTIME()`, bit access `w.3`, the wider counters, and EN/ENO that undo a failed call.
 The compliance statement lists them, and where SimplePLC is stricter than the standard.
 
 ## Run-time faults
@@ -1119,13 +1173,13 @@ warnings do not stop it. The MCP tools and the API return the same fields as JSO
 |---|---|
 | `E_SYNTAX` | Not valid ST: a missing `;`, `ELSEIF`, `!=`, `STRING(80)`, a name with `__`, no PROGRAM in the file. |
 | `E_COMMENT` | Nested or unclosed comment. |
-| `E_PRAGMA` | Conditional-compilation pragma. |
+| `E_PRAGMA` | A pragma whose meaning SimplePLC does not know: conditional compilation, `{error}`, OpenPLC's C code. |
 | `E_LITERAL` | Malformed literal: `5E3`, `.5`, `1__0`, `3#12`, a bad `$` escape or duration. |
 | `E_LITERAL_RANGE` | A literal or constant initial value does not fit its type, subrange or string. |
 | `E_LIMIT` | A size limit: name over 64 characters, STRING length, array dimensions or elements, 16 MB of memory, statements and expressions nested more than 100 levels, an expression more than 400 operations deep. |
 | `E_RESERVED` | A keyword or standard name used as a name. |
 | `E_UNDECLARED` | Unknown variable, type, member, enumeration value or function (the hint suggests the closest name). |
-| `E_DUPLICATE` | A name declared twice or shadowing a POU, type, global constant or enumeration value; two PROGRAMs in one file. |
+| `E_DUPLICATE` | A name declared twice, or a variable named like a type, global constant or enumeration value; two PROGRAMs in one file. |
 | `E_TYPE` | Types that do not go together, or a construct used with the wrong kind of value. |
 | `E_NARROWING` | An implicit conversion that could lose information: `INT := DINT`, `REAL := LREAL`. |
 | `E_AMBIGUOUS` | A form with two readings (`-a ** b`, `NOT a = b`), an enumeration value of two types, a conversion vendors disagree on. |
@@ -1154,7 +1208,7 @@ warnings do not stop it. The MCP tools and the API return the same fields as JSO
 | `W_STRING_CAPACITY` | A string value may be longer than its target (`F_STRING_LENGTH` if it is). |
 | `W_CASE_INCOMPLETE` | An enumeration CASE without ELSE misses values. |
 | `W_UNUSED` | A variable, constant or tag that no statement names. |
-| `W_PRAGMA` | A pragma was ignored. |
+| `W_PRAGMA` | A pragma that only describes the code (attribute, region, message) was ignored. |
 | `W_LIBRARY` | A library file the program uses has syntax errors and was left out (on the PLC, not in the CLI). |
 
 `simpleplc check --listing` (MCP `get_compiled`) prints the program as compiled, as valid ST

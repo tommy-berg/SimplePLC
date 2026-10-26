@@ -217,7 +217,7 @@ configuration and says so.
 |------|-------------|---------|
 | `--id` | `SIMPLEPLC_ID` | the host name (a container's `hostname`) |
 | `--name` | `SIMPLEPLC_NAME` | the example's title, or the id |
-| `--example` | `SIMPLEPLC_EXAMPLE` | `none`: a blank PLC; or `tank`, `blink`, `traffic-light`, `remote-io`, `factory-io-conveyor` |
+| `--example` | `SIMPLEPLC_EXAMPLE` | `none`: a blank PLC; or `tank`, `blink`, `traffic-light`, `remote-io`, `factory-io-conveyor`, `temperature-pid` |
 | `--modbus-port`, `--opcua-port` | `SIMPLEPLC_MODBUS_PORT`, `SIMPLEPLC_OPCUA_PORT` | 502, 4840 |
 | `--listen` | | every interface (`simpleplc mcp`: 127.0.0.1); on the first run it applies to Modbus and OPC UA too |
 

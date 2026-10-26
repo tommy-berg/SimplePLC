@@ -28,6 +28,9 @@ struct TaskOptions {
     bool realtime = false;
     std::chrono::milliseconds watchdog{0};  ///< wall-clock limit per cycle; 0: max(100 ms, 10 × cycle)
     uint64_t budget = 50'000'000;           ///< instructions per cycle (deterministic watchdog)
+    /// Where the PLC's time (TIME(), the timers) is zero: its power-up, moved back by the time retentive
+    /// memory kept. The epoch of the steady clock when not set.
+    std::chrono::steady_clock::time_point timeOrigin{};
 };
 
 /// Where and why a program stopped.

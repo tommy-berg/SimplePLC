@@ -267,10 +267,10 @@ std::string someOf(const std::vector<std::string>& names) {
 }
 
 /// The retentive memory as the file holds it: `retain` tags as JSON values, RETAIN variables as ST literals
-/// by task. None when a running task delivered no snapshot in time: nothing is written then, the next second
-/// tries again.
-std::optional<std::string> retainedText(const ProcessImage& image, const std::vector<std::shared_ptr<runtime::Task>>& tasks,
-                                        const std::vector<std::string>& names) {
+/// by task (the PLC's time is added when it is written). None when a running task delivered no snapshot in
+/// time: nothing is written then, the next second tries again.
+std::optional<json> retainedContent(const ProcessImage& image, const std::vector<std::shared_ptr<runtime::Task>>& tasks,
+                                    const std::vector<std::string>& names) {
     json out = {{"tags", json::object()}, {"variables", json::object()}};
     for (const TagDef& t : image.tags()) {
         if (!t.retain) continue;
@@ -289,8 +289,10 @@ std::optional<std::string> retainedText(const ProcessImage& image, const std::ve
         }
         out["variables"][names[i]] = std::move(vars);
     }
-    return out.dump(-1, ' ', false, json::error_handler_t::replace);
+    return out;
 }
+
+constexpr const char* kPlcTimeKey = "plc_time_ns";
 
 /// What retain.json holds; an empty object when there is none, or when it is damaged (said in the log).
 json readRetained(const std::filesystem::path& dir, log::Scope& log) {
@@ -381,15 +383,19 @@ void Instance::saveRetained(bool now) {
         tasks = tasks_;
         names = taskNamesLocked();
     }
-    std::optional<std::string> text = retainedText(*image, tasks, names);  // waits for a cycle of each task: unlocked
+    std::optional<json> content = retainedContent(*image, tasks, names);  // waits for a cycle of each task: unlocked
     std::lock_guard lock(mutex_);
-    if (text && open_ && image == image_) writeRetainedLocked(*text);  // not after a cold restart meanwhile
+    if (content && open_ && image == image_) writeRetainedLocked(*content, false);  // not after a cold restart meanwhile
 }
 
-void Instance::writeRetainedLocked(const std::string& text) {
+void Instance::writeRetainedLocked(json content, bool always) {
     retainSavedAt_ = std::chrono::steady_clock::now();
-    if (text == retainWritten_) return;
-    if (auto ok = runtime::writeFileAtomic(dir_ / kRetainFile, text)) {
+    // Compared without the time, which always moves: values that did not change are not written again
+    std::string text = content.dump(-1, ' ', false, json::error_handler_t::replace);
+    if (text == retainWritten_ && !always) return;
+    // The PLC's time goes with the values: timers in RETAIN instances go on from it after a power cycle
+    content[kPlcTimeKey] = std::chrono::duration_cast<std::chrono::nanoseconds>(retainSavedAt_ - timeOrigin_).count();
+    if (auto ok = runtime::writeFileAtomic(dir_ / kRetainFile, content.dump(-1, ' ', false, json::error_handler_t::replace))) {
         retainWritten_ = text;
         retainError_.clear();
     } else if (ok.error() != retainError_) {
@@ -413,6 +419,13 @@ void Instance::openLocked(bool runProgram, const log::Author& by) {
     // Retentive memory, as it was when the power went: the tags now, before STOP writes the substitute values
     // and before the links send anything; the programs' RETAIN variables once the programs are loaded
     json retained = readRetained(dir_, log_);
+    // The PLC's time continues from what retentive memory kept (it stands still while the PLC is off), so a
+    // timer in a RETAIN instance goes on where it stopped; without retentive memory it starts at 0
+    int64_t keptNs = 0;
+    if (auto it = retained.find(kPlcTimeKey); it != retained.end() && it->is_number_integer() && it->get<int64_t>() > 0) {
+        keptNs = it->get<int64_t>();
+    }
+    timeOrigin_ = std::chrono::steady_clock::now() - std::chrono::nanoseconds(keptNs);
     std::vector<std::string> skipped;
     size_t tagsRestored = retained.contains("tags") ? restoreTags(*image_, retained["tags"], skipped) : 0;
     commWarnings_.clear();
@@ -452,7 +465,7 @@ void Instance::openLocked(bool runProgram, const log::Author& by) {
 void Instance::closeLocked(RetiredLinks& retired, bool flush) {
     if (!open_) return;
     // Retentive memory as it is now, before STOP writes the substitute values
-    if (auto text = retainedText(*image_, tasks_, taskNamesLocked())) writeRetainedLocked(*text);
+    if (auto content = retainedContent(*image_, tasks_, taskNamesLocked())) writeRetainedLocked(std::move(*content), true);
     auto start = std::chrono::steady_clock::now();
     auto lap = [&](const char* what) {
         auto now = std::chrono::steady_clock::now();
@@ -643,6 +656,7 @@ std::shared_ptr<runtime::Task> Instance::makeTask(const TaskConfig& tc) {
     options.priority = tc.priority;
     options.realtime = config_.realtime;
     options.watchdog = std::chrono::milliseconds(tc.watchdogMs);
+    options.timeOrigin = timeOrigin_;
     std::shared_ptr<ProcessImage> image = image_;
     uint64_t generation = generation_;  // this task set's
     return std::make_shared<runtime::Task>(options, image_, [this, image, generation](const runtime::FaultInfo& f) {

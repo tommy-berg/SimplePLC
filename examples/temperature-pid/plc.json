@@ -1,0 +1,18 @@
+{
+  "title": "Temperature PID",
+  "description": "Holds a temperature at its setpoint with a heater driven 0-100 % by a PID function block: derivative on the measurement, anti-windup, and a manual mode that switches back to automatic without a jump. The temperature comes from a transmitter over Modbus (a remote I/O module or a link, or a simulator while testing).",
+  "tasks": [
+    {"name": "main", "program": "main", "cycle_ms": 100}
+  ],
+  "tags": [
+    {"name": "temperature", "area": "holding_register", "address": 0, "type": "float32", "description": "Measured temperature (°C) from the transmitter (written by a remote I/O module, a link or a simulator)"},
+    {"name": "setpoint", "area": "holding_register", "address": 2, "type": "float32", "description": "Temperature setpoint (°C)"},
+    {"name": "heater", "area": "holding_register", "address": 4, "type": "float32", "substitute": 0.0, "description": "Heater output (%), 0 at STOP and on a fault"},
+    {"name": "manual_heater", "area": "holding_register", "address": 6, "type": "float32", "description": "Heater output in manual mode (%)"},
+    {"name": "kp", "area": "holding_register", "address": 8, "type": "float32", "retain": true, "description": "Gain (% per K)"},
+    {"name": "ti", "area": "holding_register", "address": 10, "type": "float32", "retain": true, "description": "Integral time (s); 0: no integral action"},
+    {"name": "td", "area": "holding_register", "address": 12, "type": "float32", "retain": true, "description": "Derivative time (s); 0: no derivative action"},
+    {"name": "auto_mode", "area": "coil", "address": 0, "type": "bool", "description": "Automatic control on; off: heater follows manual_heater"},
+    {"name": "at_setpoint", "area": "coil", "address": 1, "type": "bool", "description": "Temperature within 1 K of the setpoint"}
+  ]
+}

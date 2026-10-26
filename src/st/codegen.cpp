@@ -1181,9 +1181,9 @@ private:
         StdFn fn = static_cast<StdFn>(c.standard);
         std::vector<Expr*> args;
         for (Arg& a : c.args) args.push_back(a.value.get());
-        if (fn == StdFn::Now) {
-            uint32_t t = temp(8, 8);
-            emit(Op::Now, TypeKind::Time, t);
+        if (fn == StdFn::Now || fn == StdFn::Time || fn == StdFn::LTime) {
+            uint32_t t = temp(8, 8);  // TIME and LTIME are both nanoseconds in 64 bits
+            emit(Op::Now, fn == StdFn::LTime ? TypeKind::LTime : TypeKind::Time, t);
             return t;
         }
         if (fn == StdFn::FirstCycle) {

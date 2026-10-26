@@ -1,5 +1,6 @@
 #include "st/lexer.h"
 
+#include <cctype>
 #include <charconv>
 #include <format>
 #include <limits>
@@ -218,14 +219,56 @@ private:
         std::string body = toUpper(src_.substr(bodyStart, pos_ - bodyStart));
         advance();
         size_t first = body.find_first_not_of(" \t\r\n");
-        std::string word = first == std::string::npos ? "" : body.substr(first, body.find_first_of(" \t\r\n(", first) - first);
+        std::string word = first == std::string::npos ? "" : body.substr(first, body.find_first_of(" \t\r\n('", first) - first);
         if (word == "IF" || word == "ELSIF" || word == "ELSE" || word == "END_IF" || word == "DEFINE" || word == "UNDEFINE") {
             // Ignoring conditional compilation would compile both branches: a silent change of meaning
             error("E_PRAGMA", start, std::format("conditional-compilation pragma {{{}}} is not supported", word),
                   "remove the pragmas and keep the code that should run");
             return;
         }
+        if (word == "ERROR") {
+            error("E_PRAGMA", start, "{error …} pragma: the author marked this code as not to be compiled",
+                  "remove the pragma once the code may run");
+            return;
+        }
+        // Metadata for an editor or a tool: ignoring it does not change what the program does
+        static constexpr std::string_view kMetadata[] = {"", "ATTRIBUTE", "REGION", "ENDREGION", "INFO", "WARNING",
+                                                         "TEXT", "LIBRARY", "MESSAGEGUID"};
+        bool metadata = isAttributeList(body);
+        for (std::string_view m : kMetadata) metadata = metadata || word == m;
+        if (!metadata) {
+            // OpenPLC and MatIEC copy { … } into the generated C program: ignoring it would drop code that was meant to run
+            error("E_PRAGMA", start, "unknown pragma: SimplePLC cannot tell what it would do, so it does not ignore it",
+                  "OpenPLC runs the text between { } as C code; write it in ST instead (the cycle's time is TIME()). "
+                  "Comments are written (* … *)");
+            return;
+        }
         diags_.warning("W_PRAGMA", start, "pragma ignored: SimplePLC has no implementation-specific pragmas");
+    }
+
+    /// Siemens' block attributes: name := 'value', separated by ';' ({S7_Optimized_Access := 'TRUE'}).
+    static bool isAttributeList(std::string_view body) {
+        size_t i = 0;
+        auto blanks = [&] { while (i < body.size() && (body[i] == ' ' || body[i] == '\t' || body[i] == '\r' || body[i] == '\n')) i++; };
+        bool any = false;
+        while (true) {
+            blanks();
+            if (i == body.size()) return any;
+            size_t name = i;
+            while (i < body.size() && (std::isalnum(static_cast<unsigned char>(body[i])) || body[i] == '_')) i++;
+            if (i == name) return false;
+            blanks();
+            if (body.substr(i, 2) != ":=") return false;
+            i += 2;
+            blanks();
+            if (i == body.size() || body[i] != '\'') return false;
+            size_t close = body.find('\'', i + 1);
+            if (close == std::string_view::npos) return false;
+            i = close + 1;
+            any = true;
+            blanks();
+            if (i < body.size() && body[i] == ';') i++;
+        }
     }
 
     Token make(Tok kind, size_t begin, SourceLoc at) const {

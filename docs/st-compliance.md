@@ -49,7 +49,7 @@ diagnostic (see [Refused features](#refused-features)).
 | 1 Character set | Source text in UTF-8; ASCII outside comments and string literals | Partial: non-ASCII characters only in comments and strings. A UTF-8 byte-order mark at the start is skipped; bytes that are not UTF-8 are refused (`E_SYNTAX`), and a character outside a string or comment is named (`U+00A0 (no-break space)`). |
 | 2 Identifiers | Letters, digits, embedded and leading single underscores; case-insensitive | Yes. `__` and a trailing `_` are refused (`E_SYNTAX`). |
 | 3 Comments | 1 `//`; 2a `(* *)`; 2b `/* */` | Yes. 3a, 3b nested comments: no (`E_COMMENT`). |
-| 4 Pragmas | `{ … }` | Ignored with `W_PRAGMA`; conditional compilation refused (`E_PRAGMA`). |
+| 4 Pragmas | `{ … }` | Pragmas that describe the code (attributes, regions, messages, Siemens block attributes) ignored with `W_PRAGMA`; every other pragma refused (`E_PRAGMA`). |
 | 5 Numeric literals | Integer, real, real with exponent, binary, octal, hexadecimal, `_` separators, typed literals, `TRUE`/`FALSE` | Yes. Feature 7 (Boolean 0 and 1): only as `BOOL#0`, `BOOL#1`. |
 | 6 Character string literals | Single-byte strings, typed `STRING#'…'` | Partial: double-byte (WSTRING) literals refused. |
 | 7 Two-character combinations | `$$ $' $L $N $P $R $T $hh`, either case | Yes. |
@@ -117,7 +117,7 @@ tighter) cannot change the meaning of an accepted program.
 | Characters of identifiers | ASCII letters, digits, `_` |
 | Maximum identifier length | 64 characters (`E_LIMIT`) |
 | Maximum comment length | none |
-| Pragmas | none defined; all ignored with `W_PRAGMA`, conditional compilation refused |
+| Pragmas | none defined; `{attribute}`, `{region}`, `{endregion}`, `{info}`, `{warning}`, `{text}`, `{library}`, `{messageguid}` and `name := 'value'` attributes ignored with `W_PRAGMA`, every other pragma refused (`E_PRAGMA`) |
 | STRING default length | 254 bytes (`STRING` = `STRING[254]`) |
 | STRING maximum length | 65,535 bytes; string literals likewise |
 | STRING contents | bytes; text is stored as UTF-8; LEN, positions and comparisons count bytes |
@@ -221,9 +221,9 @@ because vendors or editions read them differently, or because they cause silent 
 | `REAL_TO_DWORD`, `DWORD_TO_REAL`, `LREAL_TO_LWORD`, `LWORD_TO_LREAL` and every REAL/LREAL ↔ bit string conversion | `E_AMBIGUOUS` | Ed. 3 copies the bits; MatIEC and others convert the value. |
 | Signed integer → wider bit string (`INT_TO_DWORD`) | `E_AMBIGUOUS` | Sign extension differs between implementations. |
 | Two writers of one tag (two tasks, or a task and a link) | program not loaded; `E_BINDING` when checked | The order of the writes would be arbitrary. |
-| A name that shadows a POU, type, global constant or enumeration value | `E_DUPLICATE` | One name would have two meanings in one place. |
+| A variable named like a type, global constant or enumeration value | `E_DUPLICATE` | The bare name would have two meanings in one place. (A variable may have the name of a function or function block: in its block the name is the variable, a call has parentheses and a type follows `:`.) |
 | Nested comments | `E_COMMENT` | Optional in Ed. 3 (3a, 3b); the text after an inner opener would be live or dead depending on the reader. |
-| Conditional-compilation pragmas | `E_PRAGMA` | Ignoring them would compile both branches. |
+| A pragma other than an attribute, region or message (conditional compilation, `{error}`, OpenPLC's C code) | `E_PRAGMA` | Ignoring it would change what runs: conditional compilation would compile both branches, OpenPLC's `{ }` holds C code. |
 | Division or MOD by a constant 0 | `E_DIV_ZERO` | The program would stop there every time. |
 | A standard function used as a statement (`CONCAT(s, t);`) | `E_CALL` | The value it computes would be lost. |
 
@@ -281,6 +281,7 @@ END_VAR
 | `VAR_GLOBAL CONSTANT` at file level | Compile-time constants (elementary types, STRING, enumerations) shared by every POU of the PLC. |
 | Library files | Every other program file of the PLC is compiled with a program as a library (its PROGRAM excluded). |
 | `FIRST_CYCLE()` | TRUE in the first cycle after power-up, a restart or RUN after a fault. |
+| `TIME()`, `LTIME()` | The PLC's time at the start of the cycle (CODESYS and TwinCAT name it so), in 64-bit nanoseconds: the same value everywhere in one cycle, no wrap. It goes on from retentive memory at power-up. |
 | Bit access `w.3` | Short form of `w.%X3`. |
 | Counters `CTU_DINT`, `CTU_LINT`, `CTU_UDINT`, `CTU_ULINT` and the same for CTD, CTUD | Counters with wider PV and CV. |
 | ENO catches at any depth | A fault anywhere inside a call with ENO connected is caught; the call's effects are undone. |

@@ -4,6 +4,7 @@
 
 #include <format>
 #include <initializer_list>
+#include <set>
 
 #include "st/lexer.h"
 
@@ -84,7 +85,9 @@ bool isStatementStart(Tok k) {
 class Parser {
 public:
     Parser(std::vector<Token> tokens, uint16_t file, Diagnostics& diags)
-        : toks_(std::move(tokens)), file_(file), d_(diags) {}
+        : toks_(std::move(tokens)), file_(file), d_(diags) {
+        renameKeywordNames();
+    }
 
     File parseFile() {
         File f;
@@ -102,6 +105,17 @@ public:
             } else if (k == Tok::KwVarGlobal) {
                 VarSection s;
                 if (parseGlobalConstants(s)) f.constants.push_back(std::move(s));
+            } else if (k == Tok::KwConfiguration) {
+                // Its RESOURCE, TASK and PROGRAM … WITH lines belong to it: skip them all, not just to the next PROGRAM
+                d_.error("E_NOT_SUPPORTED", cur().loc, "CONFIGURATION is not supported by SimplePLC: tasks are configuration",
+                         "remove the CONFIGURATION block; give each PROGRAM its own task in the PLC's configuration: "
+                         "\"tasks\": [{\"name\": \"main\", \"program\": \"main\", \"cycle_ms\": 100}]");
+                hadError_ = true;
+                lastErrorPos_ = pos_;
+                skipBlock(Tok::KwEndConfiguration);
+            } else if (k == Tok::KwClass || k == Tok::KwInterface || k == Tok::KwNamespace) {
+                notSupported(cur());
+                skipBlock(k == Tok::KwClass ? Tok::KwEndClass : k == Tok::KwInterface ? Tok::KwEndInterface : Tok::KwEndNamespace);
             } else if (isUnsupportedKeyword(k)) {
                 notSupported(cur());
                 skipTopLevel();
@@ -203,7 +217,9 @@ private:
     void reserved(const Token& t) {
         d_.error("E_RESERVED", t.loc,
                  std::format("'{}' is a reserved word of IEC 61131-3 and cannot be used as a name", t.raw),
-                 std::format("use another name, e.g. {}_no", toUpper(t.raw) == "STEP" ? "step" : std::string(t.raw)));
+                 std::format("use another name, e.g. {}", toUpper(t.raw) == "STEP" ? std::string("step_no")
+                                                          : toUpper(t.raw) == "ON"  ? std::string("enable")
+                                                                                    : "my_" + std::string(t.raw)));
         hadError_ = true;
         lastErrorPos_ = pos_;
     }
@@ -226,6 +242,22 @@ private:
             take();
         }
         if (pos_ == start && !at(Tok::End) && !isEndKeyword(cur().kind) && !isTopLevel(cur().kind)) take();
+    }
+
+    /// Skips a parenthesised group, nested ones included.
+    void skipParens() {
+        int depth = 0;
+        do {
+            if (at(Tok::LParen)) depth++;
+            else if (at(Tok::RParen)) depth--;
+            take();
+        } while (depth > 0 && !at(Tok::End) && !at(Tok::Semicolon));
+    }
+
+    /// Skips past `end`; without one, to the end of the file.
+    void skipBlock(Tok end) {
+        while (!at(Tok::End) && !accept(end)) take();
+        accept(Tok::Semicolon);
     }
 
     void skipTopLevel() {
@@ -312,6 +344,33 @@ private:
         return pou;
     }
 
+    /// A keyword of a feature SimplePLC does not have, declared as a variable (ON, STEP …): its
+    /// declaration is an error (E_RESERVED), and everywhere in the file it is read as that name, so
+    /// its uses and the calls that pass it add no syntax errors.
+    void renameKeywordNames() {
+        std::set<Tok> kinds;
+        bool inVar = false;
+        for (size_t i = 0; i + 1 < toks_.size(); i++) {
+            const Tok k = toks_[i].kind;
+            if (isVarSectionStart(k)) inVar = true;
+            else if (k == Tok::KwEndVar) inVar = false;
+            if (!inVar || i == 0 || !isUnsupportedKeyword(k) || isVarSectionStart(k) || isTopLevel(k)) continue;
+            const Tok before = toks_[i - 1].kind, after = toks_[i + 1].kind;
+            const bool namePlace = isVarSectionStart(before) || before == Tok::KwConstant || before == Tok::KwRetain ||
+                                   before == Tok::KwNonRetain || before == Tok::Semicolon || before == Tok::Comma;
+            if (namePlace && (after == Tok::Colon || after == Tok::Comma)) {
+                kinds.insert(k);
+                keywordNames_.insert(i);
+            }
+        }
+        if (kinds.empty()) return;
+        for (Token& t : toks_) {
+            if (!kinds.count(t.kind)) continue;
+            t.kind = Tok::Identifier;
+            t.text = toUpper(t.raw);
+        }
+    }
+
     static bool isVarSectionStart(Tok k) {
         switch (k) {
             case Tok::KwVar: case Tok::KwVarInput: case Tok::KwVarOutput: case Tok::KwVarInOut:
@@ -388,6 +447,7 @@ private:
 
     bool parseVarDecl(VarDecl& decl) {
         do {
+            if (keywordNames_.count(pos_)) reserved(cur());  // reported here; read as the name it was meant to be
             if (!at(Tok::Identifier)) {
                 if (isKeyword(cur().kind)) {
                     reserved(cur());
@@ -450,10 +510,21 @@ private:
             }
             return spec;
         }
-        if (at(Tok::KwWString) || at(Tok::KwRefTo) || at(Tok::KwRef)) {
+        if (at(Tok::KwRefTo) || at(Tok::KwRef)) {
+            // Read the referenced type too (REF_TO ARRAY[0..9] OF BYTE), so the declaration ends where it should
             notSupported(cur());
             take();
-            if (at(Tok::Identifier)) take();
+            parseTypeSpec(inTypeDecl);
+            spec->upper = "?";
+            return spec;
+        }
+        if (at(Tok::KwWString)) {
+            notSupported(cur());
+            take();
+            if (accept(Tok::LBracket)) {
+                parseExpr();
+                expect(Tok::RBracket, " after the string length");
+            }
             spec->upper = "?";
             return spec;
         }
@@ -676,6 +747,11 @@ private:
         if (accept(Tok::Semicolon)) return;
         error(cur().loc, std::format("expected ';' after the statement, found {}", describe(cur())),
               "every statement ends with ';'");
+        // Only the ';' is missing when a statement or the end of a block follows (END_IF then IF, or a
+        // new line that starts with a name): skipping it would make its END_IF or ELSE an error too
+        const Tok k = cur().kind;
+        const bool newLine = pos_ > 0 && cur().loc.line > toks_[pos_ - 1].loc.line;
+        if (isEndKeyword(k) || (isStatementStart(k) && (k != Tok::Identifier || newLine))) return;
         syncStatement();
     }
 
@@ -816,7 +892,10 @@ private:
             const Token& opTok = take();
             BinaryOp op = binaryOp(opTok.kind);
             ExprPtr rhs = parseBinary(prec + 1);
-            if (!lhs || !rhs) return nullptr;
+            if (!lhs || !rhs) {
+                lhs = nullptr;  // reported; read the rest of the expression all the same
+                continue;
+            }
             checkAmbiguity(op, opTok.loc, *lhs, *rhs);
             const Expr* l = lhs.get();
             const Expr* r = rhs.get();
@@ -916,6 +995,7 @@ private:
                 if (isUnsupportedKeyword(t.kind)) {
                     notSupported(t);
                     take();
+                    if (at(Tok::LParen)) skipParens();  // REF(x): the argument goes with it
                 } else {
                     error(t.loc, std::format("expected a value, found {}", describe(t)));
                 }
@@ -976,6 +1056,7 @@ private:
                 SourceLoc loc = e->loc;
                 auto call = std::make_unique<Call>(loc, std::move(e));
                 take();
+                bool failed = false;
                 if (!at(Tok::RParen)) {
                     do {
                         Arg a;
@@ -991,11 +1072,15 @@ private:
                             continue;
                         }
                         a.value = parseExpr();
-                        if (!a.value) return nullptr;
+                        if (!a.value) {
+                            failed = true;  // reported; read the other arguments and the ')' all the same
+                            continue;
+                        }
                         call->args.push_back(std::move(a));
                     } while (accept(Tok::Comma));
                 }
                 expect(Tok::RParen, " to close the call");
+                if (failed) return nullptr;
                 uint32_t d = call->callee ? call->callee->depth : 0;
                 for (const Arg& a : call->args) d = std::max(d, a.value ? a.value->depth : 0u);
                 call->depth = d + 1;
@@ -1015,6 +1100,7 @@ private:
     }
 
     std::vector<Token> toks_;
+    std::set<size_t> keywordNames_;  ///< token positions where a keyword is declared as a name
     size_t pos_ = 0;
     int depth_ = 0;
     bool tooDeep_ = false;

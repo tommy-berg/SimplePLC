@@ -566,7 +566,7 @@ void Task::run() {
         {
             std::lock_guard machineLock(machineMutex_);
             if (hasPending_.load()) swapPending();
-            bool ok = cycleOnce(ns(planned), wake + watchdog());
+            bool ok = cycleOnce(ns(planned) - ns(options_.timeOrigin), wake + watchdog());
             Clock::time_point done = Clock::now();
             double execUs = duration<double, std::micro>(done - wake).count();
             double lateUs = duration<double, std::micro>(wake - planned).count();

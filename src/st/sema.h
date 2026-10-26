@@ -23,6 +23,7 @@ enum class StdFn : int {
     Len, Left, Right, Mid, Concat, Insert, Delete, Replace, Find,
     Atan2,
     FirstCycle,  ///< extension: TRUE in the first cycle after the program starts (FIRST_CYCLE())
+    Time, LTime,  ///< extension (CODESYS, TwinCAT): the PLC's time at the start of the cycle (TIME(), LTIME())
     Now,   ///< internal: the cycle's time (standard library timers)
     Eval,  ///< internal: args[0] evaluated under EN/ENO (standard, operator and conversion functions)
 };
